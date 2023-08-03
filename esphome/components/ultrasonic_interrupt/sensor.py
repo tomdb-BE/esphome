@@ -7,29 +7,29 @@ from esphome.const import (
     CONF_TRIGGER_PIN,
     CONF_TIMEOUT,
     STATE_CLASS_MEASUREMENT,
-    UNIT_METER,
+    UNIT_CENTIMETER,
     ICON_ARROW_EXPAND_VERTICAL,
 )
 
 CONF_PULSE_TIME = "pulse_time"
 
-ultrasonic_newping_ns = cg.esphome_ns.namespace("ultrasonic_newping")
-UltrasonicNewpingSensorComponent = ultrasonic_newping_ns.class_(
-    "UltrasonicNewpingSensorComponent", sensor.Sensor, cg.PollingComponent
+ultrasonic_interrupt_ns = cg.esphome_ns.namespace("ultrasonic_interrupt")
+UltrasonicInterruptSensorComponent = ultrasonic_interrupt_ns.class_(
+    "UltrasonicInterruptSensorComponent", sensor.Sensor, cg.PollingComponent
 )
 
 CONFIG_SCHEMA = (
     sensor.sensor_schema(
-        UltrasonicNewpingSensorComponent,
-        unit_of_measurement=UNIT_METER,
+        UltrasonicInterruptSensorComponent,
+        unit_of_measurement=UNIT_CENTIMETER,
         icon=ICON_ARROW_EXPAND_VERTICAL,
-        accuracy_decimals=2,
+        accuracy_decimals=0,
         state_class=STATE_CLASS_MEASUREMENT,
     )
     .extend(
         {
             cv.Required(CONF_TRIGGER_PIN): pins.gpio_output_pin_schema,
-            cv.Required(CONF_ECHO_PIN): pins.internal_gpio_input_pin_schema,
+            cv.Required(CONF_ECHO_PIN): pins.internal_gpio_input_pin_schema,      
             cv.Optional(CONF_TIMEOUT, default="2m"): cv.distance,
             cv.Optional(
                 CONF_PULSE_TIME, default="10us"
@@ -49,5 +49,5 @@ async def to_code(config):
     echo = await cg.gpio_pin_expression(config[CONF_ECHO_PIN])
     cg.add(var.set_echo_pin(echo))
 
-    cg.add(var.set_timeout_us(config[CONF_TIMEOUT] / (0.000343 / 2)))
+    cg.add(var.set_timeout(config[CONF_TIMEOUT]))
     cg.add(var.set_pulse_time_us(config[CONF_PULSE_TIME]))
