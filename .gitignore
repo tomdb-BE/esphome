@@ -132,3 +132,10 @@ sdkconfig.*
 .tests/
 
 /components
+test.bat
+.gitignore
+testyaml/.gitignore
+testyaml/hadoga1.yaml
+testyaml/hadoga1b.yaml
+.gitignore
+.gitignore

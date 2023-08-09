@@ -1,0 +1,637 @@
+substitutions:
+  ha_name: Garage
+  ha_id: hadoga1
+  dev_name: hadoga1
+
+  dev_platform: ESP8266
+  dev_board: d1_mini
+
+  wifi_ssid: !secret wifi_name
+  wifi_pw: !secret wifi_password
+  wifi_fallback_pw: !secret wifi_fallback_password
+  wifi_dom: !secret wifi_domain
+  api_pw: !secret api_password
+  ota_pw: !secret ota_password
+
+  # Config values
+
+
+  distance_door_timeout: "2m"
+  distance_door_closed: "50"
+  distance_door_open: "25"
+  distance_door_update_interval: "1s"
+  distance_door_change_margin: "2"
+  distance_door_state_errors_accepted: "3"
+  distance_door_sleep_polling_interval: "1min"
+
+  distance_car_timeout: "2m"
+  distance_car_in_garage: "100"
+  distance_car_update_interval: "200ms"
+  distance_car_sleep_polling_interval: "1min"
+
+  movement_sleep_timeout: "2min"
+  active_sleep_timeout: "30s"
+
+  # Addressable lambda effects
+  effect_fill_forward: |-
+    static uint16_t progress = 0;
+    if (initial_run || progress == it.size()) {
+      it.all() = Color::BLACK;
+      progress = 0;
+    }
+    it.range(0, progress) = current_color;
+    progress++;
+  effect_fill_forward_mirrored: |-
+    static uint16_t progress = 0;
+    if (initial_run || progress == it.size() / 2) {
+      it.all() = Color::BLACK;
+      progress = 0;
+    }
+    it.range(0, progress) = current_color;
+    it.range(it.size() / 2, progress + it.size() / 2) = current_color;
+    progress++;
+  effect_fill_backward: |-
+    static uint16_t progress = it.size() - 1;
+    if (initial_run || progress == 0) {
+      it.all() = Color::BLACK;
+      progress = it.size() - 1;
+    }
+    it.range(progress, it.size() - 1) = current_color;
+    progress--;
+  effect_fill_backward_mirrored: |-
+    static uint16_t progress = it.size() - 1;
+    if (initial_run || progress == it.size() / 2) {
+      it.all() = Color::BLACK;
+      progress = it.size() - 1;
+    }
+    it.range(progress, it.size() - 1) = current_color;
+    it.range(progress - it.size() / 2, it.size() / 2) = current_color;
+    progress--;
+  effect_scan_forward: |-
+    static uint16_t progress = 0;
+    if (initial_run || progress == it.size()) {
+      it.all() = Color::BLACK;
+      progress = 0;
+    }
+    else {
+      it[progress-1] = Color::BLACK;
+    }
+    it[progress] = current_color;
+    progress++;
+  effect_scan_forward_mirrored: |-
+    static uint16_t progress = 0;
+    if (initial_run || progress == it.size() / 2) {
+      it.all() = Color::BLACK;
+      progress = 0;
+    }
+    else {
+      it[progress - 1] = Color::BLACK;
+      it[it.size() / 2 + progress - 1] = Color::BLACK;
+    }
+    it[progress] = current_color;
+    it[it.size() / 2 + progress] = current_color;
+    progress++;
+  effect_scan_backward: |-
+    static uint16_t progress = it.size() - 1;
+    if (initial_run || progress == 0) {
+      it.all() = Color::BLACK;
+      progress = it.size() - 1;
+    }
+    else {
+      it[progress + 1] = Color::BLACK;
+    }
+    it[progress] = current_color;
+    progress--;
+  effect_scan_backward_mirrored: |-
+    static uint16_t progress = it.size() - 1;
+    if (initial_run || progress == it.size() / 2) {
+      it.all() = Color::BLACK;
+      progress = it.size() - 1;
+    }
+    else {
+      it[progress + 1] = Color::BLACK;
+      it[progress - it.size() / 2 + 1] = Color::BLACK;
+    }
+    it[progress] = current_color;
+    it[progress - it.size() / 2] = current_color;
+    progress--;
+  effect_car_distance: |-
+    static uint16_t previous_sensor_value;
+    static uint16_t segment;
+    Color color = Color::BLACK;
+    uint16_t sensor_value = id(${ha_id}_distance_car).get_distance_cm();
+    uint8_t color_diff;
+    if (initial_run) {
+      segment = (id(${ha_id}_distance_car).get_timeout_cm() * 2) / 3;
+      previous_sensor_value = 0;
+      it.all() = Color::BLACK;
+    }
+    if (sensor_value == previous_sensor_value) {
+      return;
+    }
+    previous_sensor_value = sensor_value;
+    if (sensor_value == 0) {
+      return;
+    }
+    if (sensor_value < segment) {
+      color_diff = ((float(sensor_value) * 255.00) / segment);
+      color = Color(255 - color_diff, color_diff, 0, 0);
+    }
+    else {
+      color = GREEN;
+    }
+    it.all() = color;
+  effect_door_distance_color_mirrored: |-
+    Color color = Color::BLACK;
+    float sensor_value = id(${ha_id}_garage).position;
+    uint8_t color_diff;
+    if (initial_run) {
+      it.all() = Color::BLACK;
+    }
+    if (sensor_value < 1.00) {
+      color_diff = sensor_value * 128.00;
+      color = Color(255 - color_diff, color_diff, 0, 0);
+    }
+    else {
+      color = GREEN;
+    }
+    it.all() = color;
+
+color:
+- id: RED
+  red:   1.0000
+  green: 0.0000
+  blue:  0.0000
+  white: 0.0000
+- id: ORANGE
+  red:   1.0000
+  green: 0.6471
+  blue:  0.0000
+  white: 0.0000
+- id: GREEN
+  red:   0.0000
+  green: 1.0000
+  blue:  0.0000
+  white: 0.0000
+- id: BLUE
+  red:   0.0000
+  green: 0.0000
+  blue:  1.0000
+  white: 0.0000
+
+esp8266:
+  board: ${dev_board}
+
+# WiFi connection
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_pw}
+  domain: ${wifi_dom}
+  fast_connect: true
+  ap:
+    ssid: ${dev_name}
+    password: ${wifi_fallback_pw}
+
+# Enable logging
+logger:
+  level: INFO
+  baud_rate: 0
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: ${api_pw}
+
+# Enable over-the-air updates
+ota:
+  password: ${ota_pw}
+
+# Enable Web server
+web_server:
+  port: 80
+
+esphome:
+  name: ${dev_name}
+
+globals:
+ - id: door_opening
+   type: bool
+   restore_value: yes
+   initial_value: "0"
+ - id: leaving
+   type: bool
+   restore_value: no
+   initial_value: "0"
+ - id: arriving
+   type: bool
+   restore_value: no
+   initial_value: "0"
+
+script:
+- id: leaving_sequence_main
+  mode: single
+  then:
+  - if:
+      condition:
+        and:
+        - binary_sensor.is_on: ${ha_id}_car_in_garage
+        - not:
+          - script.is_running: arriving_sequence_main
+      then:
+      - if:
+          condition:
+            not:
+            - binary_sensor.is_on: ${ha_id}_garage_fully_open
+          then:
+            - cover.open: ${ha_id}_garage
+      - light.turn_on:
+          id: ${ha_id}_neopixel_side
+          effect: "Scan forward"
+          red: 1.0
+          green: 1.0
+          blue: 1.0
+      - light.turn_on:
+          id: ${ha_id}_neopixel_front
+          effect: "Fill backward"
+          red: 0.0
+          green: 1.0
+          blue: 0.0
+      else:
+      - light.turn_on:
+          id: ${ha_id}_neopixel_side
+          effect: "Scan forward"
+      - light.turn_on:
+          id: ${ha_id}_neopixel_side
+          effect: "Scan forward"
+- id: arriving_sequence_main
+  mode: single
+  then:
+  - delay: 1s
+- id: timer_distance_door_sleep
+  then:
+  - lambda: "id(${ha_id}_distance_door).disable_sleep();"
+  - delay: ${movement_sleep_timeout}
+  - lambda: "id(${ha_id}_distance_door).enable_sleep();"
+- id: timer_distance_car_sleep
+  then:
+  - lambda: "id(${ha_id}_distance_car).disable_sleep();"
+  - delay: ${active_sleep_timeout}
+  - lambda: "id(${ha_id}_distance_car).enable_sleep();"
+
+
+interval:
+- interval: ${distance_door_sleep_polling_interval}
+  then:
+  - if:
+      condition:
+      - lambda: "return id(${ha_id}_distance_door).sleeping();"
+      then:
+      - lambda: "id(${ha_id}_distance_door).update();"
+- interval: ${distance_car_sleep_polling_interval}
+  then:
+  - if:
+      condition:
+      - lambda: "return id(${ha_id}_distance_car).sleeping();"
+      then:
+      - lambda: "id(${ha_id}_distance_car).update();"
+
+binary_sensor:
+- name: ${ha_name} Movement
+  id: ${ha_id}_movement
+  platform: gpio
+  device_class: motion
+  pin:
+    number: D7
+    inverted: false
+    mode: INPUT
+  on_state:
+    then:
+    - if:
+        condition:
+        #DEBUG - binary_sensor.is_on: ${ha_id}_movement
+        - lambda: "return false;"
+        then:
+        - lambda: "id(${ha_id}_distance_car).disable_sleep();"
+        - script.stop: timer_distance_car_sleep
+        - script.execute: timer_distance_car_sleep
+- name: ${ha_name} Sensor Gate Active
+  id: ${ha_id}_sensor_gate_active
+  device_class: motion
+  #DEBUG platform: gpio
+  platform: template
+  #DEBUG pin:
+    #DEBUG number: D4
+    #DEBUG inverted: true
+    #DEBUG mode: INPUT
+  on_state:
+    then:
+    - if:
+        condition:
+        - binary_sensor.is_on: ${ha_id}_sensor_gate_active
+        then:
+        - script.stop: timer_distance_door_sleep
+        - lambda: "id(${ha_id}_distance_door).disable_sleep();"
+        - delay: 2s
+        - if:
+            condition:
+            - lambda: "return !id(door_opening);"
+            then:
+            - cover.template.publish:
+                id: ${ha_id}_garage
+                current_operation: !lambda "return COVER_OPERATION_OPENING;"
+            - light.turn_on:
+                id: ${ha_id}_neopixel_side
+                effect: "Scan backward"
+                red: 1.0
+                green: 1.0
+                blue: 1.0
+            else:
+            - cover.template.publish:
+                id: ${ha_id}_garage
+                current_operation: !lambda "return COVER_OPERATION_CLOSING;"
+            - light.turn_on:
+                id: ${ha_id}_neopixel_side
+                effect: "Scan forward"
+                red: 1.0
+                green: 1.0
+                blue: 1.0
+        else:
+        - cover.template.publish:
+            id: ${ha_id}_garage
+            current_operation: !lambda "return COVER_OPERATION_IDLE;"
+        - lambda: "id(door_opening) = !id(door_opening);"
+        - script.execute: timer_distance_door_sleep
+
+- name: ${ha_name} Fully Open
+  id: ${ha_id}_garage_fully_open
+  internal: false
+  platform: template
+  lambda: "return id(${ha_id}_garage).position == 1.0f;"
+- name: ${ha_name} Fully Closed
+  id: ${ha_id}_garage_fully_closed
+  internal: false
+  platform: template
+  lambda: "return !id(${ha_id}_garage).position;"
+- name: ${ha_name} Car in Garage
+  id: ${ha_id}_car_in_garage
+  internal: false
+  platform: template
+  lambda: "return !(id(${ha_id}_distance_car).get_distance_cm() > ${distance_car_in_garage});"
+
+button:
+- platform: template
+  name: ${ha_name} Leaving Sequence
+  id: ${ha_id}_button_leaving_sequence
+  on_press:
+  - script.execute: leaving_sequence_main
+- platform: template
+  name: ${ha_name} Arriving Sequence
+  id: ${ha_id}_button_arriving_sequence
+  on_press:
+  - script.execute: arriving_sequence_main
+- platform: template
+  name: ${ha_name} Button
+  id: ${ha_id}_button
+  on_press:
+  - switch.turn_on: ${ha_id}_button_gpio
+  - delay: 0.4s
+  - switch.turn_off: ${ha_id}_button_gpio
+- platform: template
+  name: ${ha_name} Button Test
+  id: ${ha_id}_button_test
+  on_press:
+  - lambda: "id(${ha_id}_sensor_gate_active).publish_state(!id(${ha_id}_sensor_gate_active).state);"
+  - delay: 10s
+
+cover:
+- platform: template
+  id: ${ha_id}_garage
+  name: ${ha_name} Garage
+  device_class: garage
+  has_position: true
+  open_action:
+  - if:
+      condition:
+      - lambda: "return !id(door_opening);"
+      then:
+      - button.press: ${ha_id}_button
+      - delay: 2s
+      - button.press: ${ha_id}_button
+  - button.press: ${ha_id}_button
+  close_action:
+  - if:
+      condition:
+      - lambda: "return id(door_opening);"
+      then:
+      - button.press: ${ha_id}_button
+      - delay: 2s
+      - button.press: ${ha_id}_button
+  - button.press: ${ha_id}_button
+  stop_action:
+  - button.press: ${ha_id}_button
+  optimistic: false
+  position_action:
+  - if:
+      condition:
+      - lambda: "return (pos < id(${ha_id}_garage).position) && id(door_opening);"
+      then:
+      - button.press: ${ha_id}_button
+      - delay: 2s
+      - button.press: ${ha_id}_button
+  - button.press: ${ha_id}_button
+
+light:
+- platform: partition
+  name: ${ha_name} LEDs Back
+  id: ${ha_id}_neopixel_back
+  segments:
+  - id: ${ha_id}_neopixel_1
+    from: 0
+    to: 119
+  - id: ${ha_id}_neopixel_2
+    from: 0
+    to: 119
+  effects:
+  - addressable_lambda:
+      name: "Car distance"
+      update_interval: ${distance_car_update_interval}
+      lambda: ${effect_car_distance}
+  - addressable_lambda:
+      name: "Door Distance"
+      update_interval: ${distance_door_update_interval}
+      lambda: ${effect_door_distance_color_mirrored}
+  - addressable_lambda:
+      name: "Scan forward"
+      update_interval: 10ms
+      lambda: ${effect_scan_forward}
+  - addressable_lambda:
+      name: "Scan backward"
+      update_interval: 10ms
+      lambda: ${effect_scan_backward}
+- platform: partition
+  name: ${ha_name} LEDs Side
+  id: ${ha_id}_neopixel_side
+  segments:
+  - id: ${ha_id}_neopixel_1
+    from: 120
+    to: 269
+  - id: ${ha_id}_neopixel_1
+    from: 120
+    to: 269
+  effects:
+  - addressable_lambda:
+      name: "Scan forward"
+      update_interval: 10ms
+      lambda: ${effect_scan_forward_mirrored}
+  - addressable_lambda:
+      name: "Scan backward"
+      update_interval: 10ms
+      lambda: ${effect_scan_backward_mirrored}
+  - addressable_lambda:
+      name: "Door Distance"
+      update_interval: ${distance_door_update_interval}
+      lambda: ${effect_door_distance_color_mirrored}
+- platform: partition
+  name: ${ha_name} LEDs Left
+  id: ${ha_id}_neopixel_left
+  segments:
+  - id: ${ha_id}_neopixel_1
+    from: 120
+    to: 269
+  effects:
+  - addressable_lambda:
+      name: "Scan forward"
+      update_interval: 10ms
+      lambda: ${effect_scan_forward}
+  - addressable_lambda:
+      name: "Scan backward"
+      update_interval: 10ms
+      lambda: ${effect_scan_backward}
+- platform: partition
+  name: ${ha_name} LEDs Right
+  id: ${ha_id}_neopixel_right
+  segments:
+  - id: ${ha_id}_neopixel_2
+    from: 120
+    to: 269
+  effects:
+  - addressable_lambda:
+      name: "Scan forward"
+      update_interval: 10ms
+      lambda: ${effect_scan_forward}
+  - addressable_lambda:
+      name: "Scan backward"
+      update_interval: 10ms
+      lambda: ${effect_scan_backward}
+- platform: partition
+  name: ${ha_name} LEDs Front
+  id: ${ha_id}_neopixel_front
+  segments:
+  - id: ${ha_id}_neopixel_1
+    from: 269
+    to: 299
+  - id: ${ha_id}_neopixel_2
+    from: 269
+    to: 299
+  effects:
+  - addressable_lambda:
+      name: "Fill forward"
+      update_interval: 10ms
+      lambda: ${effect_fill_forward_mirrored}
+  - addressable_lambda:
+      name: "Fill backward"
+      update_interval: 10ms
+      lambda: ${effect_fill_backward_mirrored}
+- platform: neopixelbus
+  id: ${ha_id}_neopixel_1
+  internal: true
+  type: GRB
+  variant: WS2811
+  pin: D2
+  num_leds: 300
+- platform: neopixelbus
+  id: ${ha_id}_neopixel_2
+  internal: true
+  type: GRB
+  variant: WS2811
+  pin: D3
+  num_leds: 300
+
+sensor:
+- platform: ultrasonic_interrupt
+  name: ${ha_name} Distance Car
+  id: ${ha_id}_distance_car
+  trigger_pin: D8
+  echo_pin: D1
+  timeout: ${distance_car_timeout}
+  update_interval: ${distance_car_update_interval}
+- platform: ultrasonic_interrupt
+  name: ${ha_name} Distance Door
+  id: ${ha_id}_distance_door
+  trigger_pin: D0
+  echo_pin: D5
+  timeout: ${distance_door_timeout}
+  update_interval: ${distance_door_update_interval}
+  on_value:
+    then:
+    - cover.template.publish:
+        id: ${ha_id}_garage
+        position: !lambda |-
+          static int8_t active_counter = 0;
+          static uint8_t state_error_counter = 0;
+          static const float door_range = ${distance_door_closed} - ${distance_door_open};
+          static uint16_t previous_distance_cm = 0;
+          uint16_t distance_cm = id(${ha_id}_distance_door).get_distance_cm();
+          int16_t delta_distance_cm = previous_distance_cm - distance_cm;
+          float cover_state = id(${ha_id}_distance_door).state;
+          bool expected_door_state = id(door_opening);
+          bool switched = false;
+          if (!distance_cm || abs(delta_distance_cm) < ${distance_door_change_margin}) {
+            return cover_state;
+          }
+          if (distance_cm >= ${distance_door_closed}) {
+            previous_distance_cm = ${distance_door_closed} + ${distance_door_change_margin};
+            expected_door_state = true;
+            cover_state = 0.0f;
+          }
+          else if (distance_cm <= ${distance_door_open}) {
+            previous_distance_cm = ${distance_door_open} + ${distance_door_change_margin};
+            expected_door_state = false;
+            cover_state = 1.0f;
+          }
+          else {
+            previous_distance_cm = distance_cm;
+            if (id(${ha_id}_sensor_gate_active).state) {
+              active_counter = (delta_distance_cm > 0) ? active_counter + 1 : active_counter - 1;
+            }
+            else if (active_counter) {
+              expected_door_state = (active_counter > 0) ? false : true;
+              state_error_counter = abs(active_counter);
+              active_counter = 0;
+            }
+            cover_state = float((${distance_door_closed} - distance_cm)) / door_range;
+          }
+          if (id(door_opening) == expected_door_state) {
+            state_error_counter = 0;
+          }
+          else {
+            state_error_counter++;
+            if (state_error_counter > ${distance_door_state_errors_accepted}) {
+              id(door_opening) = expected_door_state;
+              state_error_counter = 0;
+              switched = true;
+            }
+          }
+
+          if (switched)
+            ESP_LOGW("TEST", "Corrected direction!");
+          else
+            ESP_LOGI("TEST", "cover_state: %f - distance_cm: %d - previous_distance_cm: %d - state_error_counter: %d - active_counter: %d - door_opening: %d - expected_door_state: %d", cover_state, distance_cm, previous_distance_cm, state_error_counter, active_counter, id(door_opening), expected_door_state);
+
+          return cover_state;
+
+switch:
+- platform: gpio
+  pin: D6
+  id: ${ha_id}_button_gpio
+  internal: true
