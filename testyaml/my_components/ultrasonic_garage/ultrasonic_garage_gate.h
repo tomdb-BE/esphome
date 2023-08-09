@@ -12,14 +12,14 @@ inline bool compare_floats(float float_a, float float_b, float epsilon = 0.05f) 
     return (fabs(float_a - float_b) < epsilon);
 }
 
-class UltrasonicGarageGate : public Cover, public Component {
+class UltrasonicGarageGate : public Cover {
  public:
   void set_activate_pin(GPIOPin *activate_pin) {activate_pin_ = activate_pin; }
   void set_active_pin(GPIOPin *active_pin) {active_pin_ = active_pin; active_pin_set_ = true;}
   void set_trigger_time(uint32_t trigger_time) {trigger_time_ = trigger_time; }
   void set_operation_timeout(uint32_t operation_timeout) {operation_timeout_ = operation_timeout * 1000; }
   void set_min_position_delta(float min_position_delta) { min_position_delta_ = min_position_delta; }
-  void dump_config() override;
+  void dump_config();
   CoverTraits get_traits() override;
   void control(const CoverCall &call) override;
   void update_gate();

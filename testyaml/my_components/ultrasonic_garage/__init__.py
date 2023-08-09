@@ -1,14 +1,15 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
+from esphome import pins, core
 from esphome.components import cover, sensor
 from esphome.const import (
-    CONF_ID,
-    CONF_NAME,
+    CONF_ID,    
+    CONF_NAME,    
     DEVICE_CLASS_GARAGE,
+    DEVICE_CLASS_DISTANCE,
     STATE_CLASS_MEASUREMENT,
     UNIT_CENTIMETER,
-    ICON_ARROW_EXPAND_VERTICAL,    
+    ICON_ARROW_EXPAND_VERTICAL, 
 )
 
 AUTO_LOAD = ["cover", "sensor"]
@@ -26,7 +27,6 @@ CONF_GATE_ACTIVE_PIN = "active_pin"
 CONF_GATE_MIN_POSITION_DELTA = "min_position_delta"
 CONF_GATE_TRIGGER_TIME = "trigger_time"
 CONF_GATE_OPERATION_TIMEOUT = "operation_timeout"
-
 
 CONF_SONAR_ID = "sonar_id"
 CONF_SONAR_TRIGGER_PIN = "trigger_pin"
@@ -47,19 +47,18 @@ UltrasonicGarage = ultrasonic_garage_ns.class_(
     "UltrasonicGarage", cg.PollingComponent
 )
 UltrasonicGarageGate = ultrasonic_garage_ns.class_(
-    "UltrasonicGarageGate", cover.Cover, cg.Component
+    "UltrasonicGarageGate", cover.Cover
 )
 UltrasonicGarageSonar = ultrasonic_garage_ns.class_(
-    "UltrasonicGarageSonar", sensor.Sensor, cg.Component
+    "UltrasonicGarageSonar", cg.Component,  sensor.Sensor
 )
-GATE_SCHEMA = (
-    cover.COVER_SCHEMA.extend(
-        {
-            cv.GenerateID(): cv.declare_id(UltrasonicGarageGate),
+GATE_SCHEMA = cover.COVER_SCHEMA.extend(
+        {   
+            cv.GenerateID(CONF_ID): cv.declare_id(UltrasonicGarageGate),
             cv.Required(CONF_GATE_ACTIVATE_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(CONF_NAME, default="Ultrasonic Garage Gate"): cv.string,
+            cv.Optional(CONF_NAME, default="UNSET"): cv.string,
             cv.Optional(CONF_GATE_ACTIVE_PIN): pins.gpio_input_pin_schema,
-            cv.Optional(CONF_GATE_MIN_POSITION_DELTA, default=0.05): cv.percentage,
+            cv.Optional(CONF_GATE_MIN_POSITION_DELTA, default=0.05): cv.percentage,         
             cv.Optional(CONF_GATE_TRIGGER_TIME, default="400ms"):  cv.All(
                 cv.positive_time_period_milliseconds,
                 cv.Range(min=cv.TimePeriod(milliseconds=20), max=cv.TimePeriod(milliseconds=2000)),
@@ -69,8 +68,7 @@ GATE_SCHEMA = (
                 cv.Range(min=cv.TimePeriod(seconds=2), max=cv.TimePeriod(seconds=600)),
             ),                      
         }
-    )
-)
+    ).extend(cv.COMPONENT_SCHEMA)
 
 SONAR_SCHEMA = (sensor.sensor_schema(
         UltrasonicGarageSonar,
@@ -78,13 +76,13 @@ SONAR_SCHEMA = (sensor.sensor_schema(
         icon=ICON_ARROW_EXPAND_VERTICAL,
         accuracy_decimals=0,
         state_class=STATE_CLASS_MEASUREMENT,
+        device_class=DEVICE_CLASS_DISTANCE
     )
     .extend(
         {
-            cv.GenerateID(): cv.declare_id(UltrasonicGarageSonar),  
             cv.Required(CONF_SONAR_TRIGGER_PIN): pins.gpio_output_pin_schema,
-            cv.Required(CONF_SONAR_ECHO_PIN): pins.internal_gpio_input_pin_schema,
-            cv.Optional(CONF_NAME, default="UNSET"): cv.string,
+            cv.Required(CONF_SONAR_ECHO_PIN): pins.internal_gpio_input_pin_schema, 
+            cv.Optional(CONF_NAME, default="UNSET"): cv.string,           
             cv.Optional(CONF_SONAR_MIN_DISTANCE, default="0.1m"): cv.distance,
             cv.Optional(CONF_SONAR_MAX_DISTANCE, default="2m"): cv.distance,    
             cv.Optional(CONF_SONAR_TIMEOUT_DISTANCE, default="3m"): cv.distance,
@@ -103,23 +101,21 @@ SONAR_SCHEMA = (sensor.sensor_schema(
     )    
 )
 
-CONFIG_SCHEMA = (
-    cv.Schema(
-        {
-            cv.GenerateID(): cv.declare_id(UltrasonicGarage),        
-            cv.Required(CONF_GARAGE_GATE): GATE_SCHEMA,
-            cv.Optional(CONF_GARAGE_UPDATE_INTERVAL, default="200ms"): cv.All(
-                cv.positive_time_period_milliseconds,
-                cv.Range(min=cv.TimePeriod(milliseconds=16), max=cv.TimePeriod(milliseconds=4000)),
-            ),            
-            cv.Optional(CONF_NAME, default="Ultrasonic Garage"): cv.string,
-            cv.Optional(CONF_GARAGE_SONAR_GATE): SONAR_SCHEMA,
-            cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_SCHEMA,                             
-        }
-    )
+CONFIG_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.declare_id(UltrasonicGarage),        
+        cv.Required(CONF_GARAGE_GATE): GATE_SCHEMA,
+        cv.Optional(CONF_GARAGE_UPDATE_INTERVAL, default="200ms"): cv.All(
+            cv.positive_time_period_milliseconds,
+            cv.Range(min=cv.TimePeriod(milliseconds=16), max=cv.TimePeriod(milliseconds=4000)),
+        ),            
+        cv.Optional(CONF_NAME, default="Ultrasonic Garage"): cv.string,
+        cv.Optional(CONF_GARAGE_SONAR_GATE): SONAR_SCHEMA,
+        cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_SCHEMA,                             
+    }
 ).extend(cv.polling_component_schema("10s"))
 
-async def add_gate(gate_config):
+async def add_gate(gate_config):    
     gate_ptr = cg.new_Pvariable(gate_config[CONF_ID])
     await cover.register_cover(gate_ptr, gate_config)
 
@@ -137,7 +133,7 @@ async def add_gate(gate_config):
     return gate_ptr
 
 
-async def add_sonar(sonar_config, is_car_sonar = False):
+async def add_sonar(sonar_config, is_car_sonar = False):    
     sonar_ptr = cg.new_Pvariable(sonar_config[CONF_ID])    
     await sensor.register_sensor(sonar_ptr, sonar_config)    
 
@@ -159,20 +155,24 @@ async def add_sonar(sonar_config, is_car_sonar = False):
     return sonar_ptr
     
 async def to_code(config):
+    print(config)
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    gate_config = config[CONF_GARAGE_GATE]
+    if gate_config[CONF_NAME] == "UNSET":
+        gate_config[CONF_NAME] = config[CONF_NAME] + " Gate"
     gate = await add_gate(config[CONF_GARAGE_GATE])
     cg.add(var.set_gate(gate))
     if CONF_GARAGE_SONAR_GATE in config:
         sonar_gate_config = config[CONF_GARAGE_SONAR_GATE]
         if sonar_gate_config[CONF_NAME] == "UNSET":
-            sonar_gate_config[CONF_NAME] = config[CONF_NAME] + " Gate Sonar"
+            sonar_gate_config[CONF_NAME] = config[CONF_NAME] + " Sonar Gate"
         sonar_gate = await add_sonar(sonar_gate_config)
         cg.add(var.set_sonar_gate(sonar_gate))
     if CONF_GARAGE_SONAR_CAR in config:
         sonar_car_config = config[CONF_GARAGE_SONAR_CAR]
         if sonar_car_config[CONF_NAME] == "UNSET":
-            sonar_car_config[CONF_NAME] = config[CONF_NAME] + " Car Sonar"        
+            sonar_car_config[CONF_NAME] = config[CONF_NAME] + " Sonar Car"
         sonar_car = await add_sonar(sonar_car_config, True)   
         cg.add(var.set_sonar_car(sonar_car))
     cg.add(var.set_update_interval(config[CONF_GARAGE_UPDATE_INTERVAL]))

@@ -13,7 +13,7 @@ void UltrasonicGarageGate::setup_gate() {
   activate_pin_->setup();
   if (active_pin_)
     active_pin_->setup();
-  dump_config();
+  //dump_config();
 }
 
 void UltrasonicGarageGate::dump_config() {
@@ -29,7 +29,7 @@ void UltrasonicGarageGate::update_gate() {
   reference_timer_ = millis();
   if (trigger_timer_)
     handle_gate_trigger_();
-  if (current_operation)
+  if (current_operation != COVER_OPERATION_CLOSING)
     handle_gate_operation_();
 }
 
