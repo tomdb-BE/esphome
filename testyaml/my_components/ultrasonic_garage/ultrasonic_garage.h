@@ -20,7 +20,6 @@ class UltrasonicGarage : public PollingComponent {
   UltrasonicGarageGate *gate_;
   UltrasonicGarageSonar *sonar_gate_;
   UltrasonicGarageSonar *sonar_car_;
-  bool is_ready_ = false;
 };
 
 } //namespace ultrasonic_garage

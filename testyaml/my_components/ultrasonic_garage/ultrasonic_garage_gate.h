@@ -28,8 +28,8 @@ class UltrasonicGarageGate : public Cover {
  protected:
   void handle_gate_trigger_();
   void handle_gate_operation_();
-  GPIOPin *activate_pin_;
-  GPIOPin *active_pin_;
+  GPIOPin *activate_pin_ = nullptr;
+  GPIOPin *active_pin_ = nullptr;
   CoverOperation next_direction_;
   CoverOperation operation_direction_;
   bool active_pin_set_ = false;

@@ -4,8 +4,11 @@ from esphome import pins, core
 from esphome.components import cover, sensor
 from esphome.const import (
     CONF_ID,    
-    CONF_NAME,    
+    CONF_NAME,
+    CONF_DEVICE_CLASS,
+    DEVICE_CLASS_GATE,
     DEVICE_CLASS_GARAGE,
+    DEVICE_CLASS_GARAGE_DOOR,    
     DEVICE_CLASS_DISTANCE,
     STATE_CLASS_MEASUREMENT,
     UNIT_CENTIMETER,
@@ -38,7 +41,7 @@ CONF_SONAR_MIN_CHANGE = "min_change"
 CONF_SONAR_SLEEP_UPDATE_INTERVAL = "sleep_update_interval"
 CONF_SONAR_SLEEP_TIMEOUT = "sleep"
 CONF_SONAR_PULSE_TIME = "pulse_time"
-CONF_SONAR_ERRORS_IGNORED = "errors_ignored"
+CONF_SONAR_MAX_ERRORS = "max_errors"
 
 
 ultrasonic_garage_ns = cg.esphome_ns.namespace("ultrasonic_garage")
@@ -58,7 +61,8 @@ GATE_SCHEMA = cover.COVER_SCHEMA.extend(
             cv.Required(CONF_GATE_ACTIVATE_PIN): pins.gpio_output_pin_schema,
             cv.Optional(CONF_NAME, default="UNSET"): cv.string,
             cv.Optional(CONF_GATE_ACTIVE_PIN): pins.gpio_input_pin_schema,
-            cv.Optional(CONF_GATE_MIN_POSITION_DELTA, default=0.05): cv.percentage,         
+            cv.Optional(CONF_GATE_MIN_POSITION_DELTA, default=0.05): cv.percentage,
+            cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE_DOOR): cv.one_of(DEVICE_CLASS_GARAGE_DOOR, DEVICE_CLASS_GATE),
             cv.Optional(CONF_GATE_TRIGGER_TIME, default="400ms"):  cv.All(
                 cv.positive_time_period_milliseconds,
                 cv.Range(min=cv.TimePeriod(milliseconds=20), max=cv.TimePeriod(milliseconds=2000)),
@@ -96,7 +100,7 @@ SONAR_SCHEMA = (sensor.sensor_schema(
                 cv.Range(min=cv.TimePeriod(seconds=120)),
             ),
             cv.Optional(CONF_SONAR_PULSE_TIME, default="10us"): cv.positive_time_period_microseconds,
-            cv.Optional(CONF_SONAR_ERRORS_IGNORED, default=0): cv.positive_int,
+            cv.Optional(CONF_SONAR_MAX_ERRORS, default=0): cv.positive_int,
         }
     )    
 )
@@ -105,6 +109,7 @@ CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(UltrasonicGarage),        
         cv.Required(CONF_GARAGE_GATE): GATE_SCHEMA,
+        cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE): cv.one_of(DEVICE_CLASS_GARAGE, DEVICE_CLASS_GATE),
         cv.Optional(CONF_GARAGE_UPDATE_INTERVAL, default="200ms"): cv.All(
             cv.positive_time_period_milliseconds,
             cv.Range(min=cv.TimePeriod(milliseconds=16), max=cv.TimePeriod(milliseconds=4000)),
@@ -150,12 +155,11 @@ async def add_sonar(sonar_config, is_car_sonar = False):
     cg.add(sonar_ptr.set_sleep_update_interval(sonar_config[CONF_SONAR_SLEEP_UPDATE_INTERVAL]))
     cg.add(sonar_ptr.set_sleep_timeout(sonar_config[CONF_SONAR_SLEEP_TIMEOUT]))
     cg.add(sonar_ptr.set_pulse_time_us(sonar_config[CONF_SONAR_PULSE_TIME]))
-    cg.add(sonar_ptr.set_errors_ignored(sonar_config[CONF_SONAR_ERRORS_IGNORED]))
+    cg.add(sonar_ptr.set_max_errors(sonar_config[CONF_SONAR_MAX_ERRORS]))
 
     return sonar_ptr
     
 async def to_code(config):
-    print(config)
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     gate_config = config[CONF_GARAGE_GATE]

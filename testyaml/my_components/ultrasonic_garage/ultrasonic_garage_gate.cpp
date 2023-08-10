@@ -6,23 +6,23 @@ namespace esphome {
 namespace cover {
 namespace ultrasonic_garage {
 
-static const char *const TAG = "ultrasonicgarage.gate";
+static const char *const TAG = "ultrasonicgarage";
 
 void UltrasonicGarageGate::setup_gate() {
   ESP_LOGD(TAG, "Initializing Gate...");
   activate_pin_->setup();
   if (active_pin_)
     active_pin_->setup();
-  //dump_config();
 }
 
 void UltrasonicGarageGate::dump_config() {
-  LOG_COVER(TAG, "UltrasonicGarageGate", this);
-  LOG_PIN("  Activate Pin: ", activate_pin_);
-  (active_pin_set_) ? ESP_LOGCONFIG("  ", " Active sensor: ENABLED") : ESP_LOGCONFIG("  ", "  Active sensor: DISABLED");
-  ESP_LOGCONFIG("  ", "Min. position delta: %d%", uint32_t(min_position_delta_ * 100.00));
-  ESP_LOGCONFIG("  ", "Trigger time:  %dms", trigger_time_);
-  ESP_LOGCONFIG("  ", "Operation timeout:  %ds", operation_timeout_ / 1000);
+  LOG_COVER("  ", "Ultrasonic Garage Gate", this);
+  LOG_PIN("    Activate Pin: ", activate_pin_);
+  if (active_pin_)
+    LOG_PIN("    Active Pin: ", activate_pin_);
+  ESP_LOGCONFIG(TAG, "    Min. position delta: %d%%", min_position_delta_ * 100);
+  ESP_LOGCONFIG(TAG, "    Trigger time: %dms", trigger_time_);
+  ESP_LOGCONFIG(TAG, "    Operation timeout: %ds", operation_timeout_ / 1000);
 }
 
 void UltrasonicGarageGate::update_gate() {

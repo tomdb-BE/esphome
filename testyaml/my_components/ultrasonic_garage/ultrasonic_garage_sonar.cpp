@@ -6,7 +6,7 @@ namespace esphome {
 namespace cover {
 namespace ultrasonic_garage {
 
-static const char *const TAG = "ultrasonicgarage.sonar";
+static const char *const TAG = "ultrasonicgarage";
 
 void UltrasonicGarageSonar::setup_sonar() {
   ESP_LOGCONFIG(TAG, "Initializing Ultrasonic Sensor...");
@@ -47,11 +47,23 @@ void UltrasonicGarageSonar::update() {
 }
 
 void UltrasonicGarageSonar::dump_config() {
-  //LOG_SENSOR(TAG, "UltrasonicGarageSonar", this);
-  LOG_PIN("  Echo Pin: ", echo_pin_);
-  LOG_PIN("  Trigger Pin: ", trigger_pin_);
-  ESP_LOGCONFIG(TAG, "  Pulse time: %uµs", pulse_time_us_);
-  ESP_LOGCONFIG(TAG, "  Timeout: %uµs", timeout_us_);
+  if (is_car_) {
+    LOG_SENSOR("  ", "Sonar Car", this);
+  }
+  else {
+    LOG_SENSOR("  ", "Sonar Gate", this);
+  }
+  LOG_PIN("    Echo Pin: ", echo_pin_);
+  LOG_PIN("    Trigger Pin: ", trigger_pin_);
+  ESP_LOGCONFIG(TAG, "    Pulse time: %dµs", pulse_time_us_);
+  ESP_LOGCONFIG(TAG, "    Pulse Timeout: %dm", timeout_us_);
+  ESP_LOGCONFIG(TAG, "    Min. Distance: %dm", min_distance_);
+  ESP_LOGCONFIG(TAG, "    Max. Distance: %dm", max_distance_);
+  ESP_LOGCONFIG(TAG, "    Min. Change: %dm", min_change_);
+  ESP_LOGCONFIG(TAG, "    Max. Errors: %dm", max_errors_);
+  ESP_LOGCONFIG(TAG, "    Min. Change: %dm", min_change_);
+  ESP_LOGCONFIG(TAG, "    Sleep timeout: %ds", sleep_timeout_);
+  ESP_LOGCONFIG(TAG, "    Sleep update interval: %dm", sleep_update_interval_);
 }
 
 void UltrasonicGarageSonar::send_trigger_pulse() {

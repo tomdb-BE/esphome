@@ -19,7 +19,7 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   void set_min_distance(uint16 min_distance) { min_distance_ = min_distance; }
   void set_max_distance(uint16 max_distance) { max_distance_ = max_distance; }
   void set_min_change(uint16 min_change) { min_change_ = min_change; }
-  void set_errors_ignored(uint16 errors_ignored) { errors_ignored_ = errors_ignored; }
+  void set_max_errors(uint16 max_errors) { max_errors_ = max_errors; }
   void set_timeout_distance(uint16 timeout_m) { timeout_cm_ = timeout_m * 100; timeout_us_ = timeout_cm_ * ULTRASONIC_US_TO_CM; }
   void set_sleep_update_interval(uint32_t sleep_update_interval) { sleep_update_interval_ = sleep_update_interval; }
   void set_sleep_timeout(uint32_t sleep_timeout) { sleep_timeout_ = sleep_timeout; }
@@ -52,7 +52,7 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   uint16_t min_distance_ = 0;
   uint16_t max_distance_ = 0;
   uint16_t min_change_ = 0;
-  uint16_t errors_ignored_ = 0;
+  uint16_t max_errors_ = 0;
 
   uint32_t sleep_update_interval_ = 0;
   uint32_t sleep_timeout_ = 0;
