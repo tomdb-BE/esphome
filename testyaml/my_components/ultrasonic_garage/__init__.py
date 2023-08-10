@@ -1,27 +1,31 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins, core
-from esphome.components import cover, sensor
+from esphome.components import cover, sensor, binary_sensor
 from esphome.const import (
     CONF_ID,    
     CONF_NAME,
+    CONF_PIN,
     CONF_DEVICE_CLASS,
+    CONF_UPDATE_INTERVAL,
     DEVICE_CLASS_GATE,
     DEVICE_CLASS_GARAGE,
     DEVICE_CLASS_GARAGE_DOOR,    
     DEVICE_CLASS_DISTANCE,
+    DEVICE_CLASS_MOTION,
     STATE_CLASS_MEASUREMENT,
     UNIT_CENTIMETER,
     ICON_ARROW_EXPAND_VERTICAL, 
 )
 
-AUTO_LOAD = ["cover", "sensor"]
+AUTO_LOAD = ["cover", "sensor", "binary_sensor"]
 
 ICON_GARAGE = "mdi:garage"
 
 CONF_GARAGE_GATE = "gate"
 CONF_GARAGE_SONAR_GATE = "gate_sonar"
 CONF_GARAGE_SONAR_CAR = "car_sonar"
+CONF_GARAGE_MOTION = "motion_sensor"
 CONF_GARAGE_UPDATE_INTERVAL = "update_interval"
 
 CONF_GATE_ID = "gate_id"
@@ -34,8 +38,8 @@ CONF_GATE_OPERATION_TIMEOUT = "operation_timeout"
 CONF_SONAR_ID = "sonar_id"
 CONF_SONAR_TRIGGER_PIN = "trigger_pin"
 CONF_SONAR_ECHO_PIN = "echo_pin"
-CONF_SONAR_MIN_DISTANCE = "min"
-CONF_SONAR_MAX_DISTANCE = "max"
+CONF_SONAR_MIN_DISTANCE = "min_distance"
+CONF_SONAR_MAX_DISTANCE = "max_distance"
 CONF_SONAR_TIMEOUT_DISTANCE = "timeout"
 CONF_SONAR_MIN_CHANGE = "min_change"
 CONF_SONAR_SLEEP_UPDATE_INTERVAL = "sleep_update_interval"
@@ -43,6 +47,9 @@ CONF_SONAR_SLEEP_TIMEOUT = "sleep"
 CONF_SONAR_PULSE_TIME = "pulse_time"
 CONF_SONAR_MAX_ERRORS = "max_errors"
 
+CONF_MOTION_INVERTED = "inverted"
+CONF_MOTION_MIN_ON = "min_on"
+CONF_MOTION_MIN_OFF = "min_off"
 
 ultrasonic_garage_ns = cg.esphome_ns.namespace("ultrasonic_garage")
 
@@ -53,9 +60,13 @@ UltrasonicGarageGate = ultrasonic_garage_ns.class_(
     "UltrasonicGarageGate", cover.Cover
 )
 UltrasonicGarageSonar = ultrasonic_garage_ns.class_(
-    "UltrasonicGarageSonar", cg.Component,  sensor.Sensor
+    "UltrasonicGarageSonar", cg.Component, sensor.Sensor
 )
-GATE_SCHEMA = cover.COVER_SCHEMA.extend(
+UltrasonicGarageMotion = ultrasonic_garage_ns.class_(
+    "UltrasonicGarageMotion", cg.Component, binary_sensor.BinarySensor
+)
+
+GATE_SCHEMA = (cover.COVER_SCHEMA.extend(
         {   
             cv.GenerateID(CONF_ID): cv.declare_id(UltrasonicGarageGate),
             cv.Required(CONF_GATE_ACTIVATE_PIN): pins.gpio_output_pin_schema,
@@ -73,6 +84,7 @@ GATE_SCHEMA = cover.COVER_SCHEMA.extend(
             ),                      
         }
     ).extend(cv.COMPONENT_SCHEMA)
+)
 
 SONAR_SCHEMA = (sensor.sensor_schema(
         UltrasonicGarageSonar,
@@ -87,38 +99,45 @@ SONAR_SCHEMA = (sensor.sensor_schema(
             cv.Required(CONF_SONAR_TRIGGER_PIN): pins.gpio_output_pin_schema,
             cv.Required(CONF_SONAR_ECHO_PIN): pins.internal_gpio_input_pin_schema, 
             cv.Optional(CONF_NAME, default="UNSET"): cv.string,           
-            cv.Optional(CONF_SONAR_MIN_DISTANCE, default="0.1m"): cv.distance,
-            cv.Optional(CONF_SONAR_MAX_DISTANCE, default="2m"): cv.distance,    
-            cv.Optional(CONF_SONAR_TIMEOUT_DISTANCE, default="3m"): cv.distance,
-            cv.Optional(CONF_SONAR_MIN_CHANGE, default="0.02m"): cv.distance,
-            cv.Optional(CONF_SONAR_SLEEP_UPDATE_INTERVAL, default="60s"):  cv.All(
-                cv.positive_time_period_seconds,
-                cv.Range(min=cv.TimePeriod(seconds=60)),
-            ),
-            cv.Optional(CONF_SONAR_SLEEP_TIMEOUT, default="2min"): cv.All(
-                cv.positive_time_period_seconds,
-                cv.Range(min=cv.TimePeriod(seconds=120)),
-            ),
-            cv.Optional(CONF_SONAR_PULSE_TIME, default="10us"): cv.positive_time_period_microseconds,
+            cv.Optional(CONF_SONAR_MIN_DISTANCE, default="10cm"): cv.All(cv.distance, cv.float_range(max=650)),
+            cv.Optional(CONF_SONAR_MAX_DISTANCE, default="200cm"): cv.All(cv.distance, cv.float_range(max=650)), 
+            cv.Optional(CONF_SONAR_TIMEOUT_DISTANCE, default="300cm"): cv.All(cv.distance, cv.float_range(max=650)),
+            cv.Optional(CONF_SONAR_MIN_CHANGE, default="2cm"): cv.All(cv.distance, cv.float_range(max=650)),
+            cv.Optional(CONF_SONAR_SLEEP_UPDATE_INTERVAL, default="60s"):  cv.All(cv.positive_time_period_seconds, cv.Range(min=cv.TimePeriod(seconds=60))),            
+            cv.Optional(CONF_SONAR_SLEEP_TIMEOUT, default="2min"): cv.All(cv.positive_time_period_seconds, cv.Range(min=cv.TimePeriod(seconds=120))),
+            cv.Optional(CONF_SONAR_PULSE_TIME, default="10us"): cv.All(cv.positive_time_period_microseconds, cv.Range(max=cv.TimePeriod(microseconds=1000))),
             cv.Optional(CONF_SONAR_MAX_ERRORS, default=0): cv.positive_int,
         }
     )    
 )
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(UltrasonicGarage),        
-        cv.Required(CONF_GARAGE_GATE): GATE_SCHEMA,
-        cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE): cv.one_of(DEVICE_CLASS_GARAGE, DEVICE_CLASS_GATE),
-        cv.Optional(CONF_GARAGE_UPDATE_INTERVAL, default="200ms"): cv.All(
-            cv.positive_time_period_milliseconds,
-            cv.Range(min=cv.TimePeriod(milliseconds=16), max=cv.TimePeriod(milliseconds=4000)),
-        ),            
-        cv.Optional(CONF_NAME, default="Ultrasonic Garage"): cv.string,
-        cv.Optional(CONF_GARAGE_SONAR_GATE): SONAR_SCHEMA,
-        cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_SCHEMA,                             
-    }
-).extend(cv.polling_component_schema("10s"))
+MOTION_SCHEMA = (binary_sensor.binary_sensor_schema(
+        UltrasonicGarageMotion,
+        device_class=DEVICE_CLASS_MOTION
+    )
+    .extend(
+        {
+            cv.Required(CONF_PIN): pins.gpio_input_pin_schema,
+            cv.Optional(CONF_NAME, default="UNSET"): cv.string,           
+            cv.Optional(CONF_MOTION_INVERTED, default=False): cv.boolean,
+            cv.Optional(CONF_MOTION_MIN_ON, default="0ms"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_MOTION_MIN_OFF, default="0ms"): cv.positive_time_period_milliseconds,
+        }
+    )    
+)
+
+CONFIG_SCHEMA = (cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(UltrasonicGarage),        
+            cv.Required(CONF_GARAGE_GATE): GATE_SCHEMA,
+            cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE): cv.one_of(DEVICE_CLASS_GARAGE, DEVICE_CLASS_GATE),           
+            cv.Optional(CONF_NAME, default="Ultrasonic Garage"): cv.string,
+            cv.Optional(CONF_GARAGE_SONAR_GATE): SONAR_SCHEMA,
+            cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_SCHEMA,
+            cv.Optional(CONF_GARAGE_MOTION) : MOTION_SCHEMA,                             
+        }
+    ).extend(cv.polling_component_schema("200ms"))
+)
 
 async def add_gate(gate_config):    
     gate_ptr = cg.new_Pvariable(gate_config[CONF_ID])
@@ -148,17 +167,31 @@ async def add_sonar(sonar_config, is_car_sonar = False):
     cg.add(sonar_ptr.set_sonar_type(is_car_sonar))
     cg.add(sonar_ptr.set_trigger_pin(trigger_pin))    
     cg.add(sonar_ptr.set_echo_pin(echo_pin))    
-    cg.add(sonar_ptr.set_min_distance(sonar_config[CONF_SONAR_MIN_DISTANCE]))
-    cg.add(sonar_ptr.set_max_distance(sonar_config[CONF_SONAR_MAX_DISTANCE]))
-    cg.add(sonar_ptr.set_timeout_distance(sonar_config[CONF_SONAR_TIMEOUT_DISTANCE]))
-    cg.add(sonar_ptr.set_min_change(sonar_config[CONF_SONAR_MIN_CHANGE]))
+    cg.add(sonar_ptr.set_min_distance(sonar_config[CONF_SONAR_MIN_DISTANCE] * 100))
+    cg.add(sonar_ptr.set_max_distance(sonar_config[CONF_SONAR_MAX_DISTANCE] * 100))
+    cg.add(sonar_ptr.set_timeout_distance(sonar_config[CONF_SONAR_TIMEOUT_DISTANCE] * 100))
+    cg.add(sonar_ptr.set_min_change(sonar_config[CONF_SONAR_MIN_CHANGE] * 100))
     cg.add(sonar_ptr.set_sleep_update_interval(sonar_config[CONF_SONAR_SLEEP_UPDATE_INTERVAL]))
     cg.add(sonar_ptr.set_sleep_timeout(sonar_config[CONF_SONAR_SLEEP_TIMEOUT]))
     cg.add(sonar_ptr.set_pulse_time_us(sonar_config[CONF_SONAR_PULSE_TIME]))
     cg.add(sonar_ptr.set_max_errors(sonar_config[CONF_SONAR_MAX_ERRORS]))
 
     return sonar_ptr
-    
+
+async def add_motion_sensor(motion_config):    
+    motion_ptr = cg.new_Pvariable(motion_config[CONF_ID])    
+    await binary_sensor.register_binary_sensor(motion_ptr, motion_config)    
+
+    motion_pin = await cg.gpio_pin_expression(motion_config[CONF_PIN])
+
+    cg.add(motion_ptr.set_motion_pin(motion_pin)) 
+    cg.add(motion_ptr.set_inverted(motion_config[CONF_MOTION_INVERTED]))
+    cg.add(motion_ptr.set_min_on(motion_config[CONF_MOTION_MIN_ON]))
+    cg.add(motion_ptr.set_min_off(motion_config[CONF_MOTION_MIN_OFF]))
+
+    return motion_ptr
+
+
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
@@ -179,7 +212,9 @@ async def to_code(config):
             sonar_car_config[CONF_NAME] = config[CONF_NAME] + " Sonar Car"
         sonar_car = await add_sonar(sonar_car_config, True)   
         cg.add(var.set_sonar_car(sonar_car))
-    cg.add(var.set_update_interval(config[CONF_GARAGE_UPDATE_INTERVAL]))
-
-  
-    
+    if CONF_GARAGE_MOTION in config:
+        motion_config = config[CONF_GARAGE_MOTION]
+        if motion_config[CONF_NAME] == "UNSET":
+            motion_config[CONF_NAME] = config[CONF_NAME] + " Motion"
+        motion_sensor = await add_motion_sensor(motion_config)   
+        cg.add(var.set_motion_sensor(motion_sensor))            

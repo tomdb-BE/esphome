@@ -3,19 +3,16 @@
 #include "esphome/core/hal.h"
 
 namespace esphome {
-namespace cover {
 namespace ultrasonic_garage {
 
-static const char *const TAG = "ultrasonicgarage";
+static const char *const TAG = "ultrasonicgarage.sonar";
 
 void UltrasonicGarageSonar::setup_sonar() {
-  ESP_LOGCONFIG(TAG, "Initializing Ultrasonic Sensor...");
   trigger_pin_->setup();
   trigger_pin_->digital_write(false);
   echo_pin_->setup();
   echo_isr_ = echo_pin_->to_isr();
   echo_pin_->attach_interrupt(&UltrasonicGarageSonar::interrupt_echo_callback_, &distance_us_, gpio::INTERRUPT_FALLING_EDGE);
-  dump_config();
 }
 
 void UltrasonicGarageSonar::update() {
@@ -47,6 +44,7 @@ void UltrasonicGarageSonar::update() {
 }
 
 void UltrasonicGarageSonar::dump_config() {
+  const char *const TAG = "ultrasonicgarage";
   if (is_car_) {
     LOG_SENSOR("  ", "Sonar Car", this);
   }
@@ -56,14 +54,14 @@ void UltrasonicGarageSonar::dump_config() {
   LOG_PIN("    Echo Pin: ", echo_pin_);
   LOG_PIN("    Trigger Pin: ", trigger_pin_);
   ESP_LOGCONFIG(TAG, "    Pulse time: %dµs", pulse_time_us_);
-  ESP_LOGCONFIG(TAG, "    Pulse Timeout: %dm", timeout_us_);
-  ESP_LOGCONFIG(TAG, "    Min. Distance: %dm", min_distance_);
-  ESP_LOGCONFIG(TAG, "    Max. Distance: %dm", max_distance_);
-  ESP_LOGCONFIG(TAG, "    Min. Change: %dm", min_change_);
-  ESP_LOGCONFIG(TAG, "    Max. Errors: %dm", max_errors_);
-  ESP_LOGCONFIG(TAG, "    Min. Change: %dm", min_change_);
+  ESP_LOGCONFIG(TAG, "    Pulse Timeout: %dµs", timeout_us_);
+  ESP_LOGCONFIG(TAG, "    Distance Timeout: %dcs", timeout_cm_);
+  ESP_LOGCONFIG(TAG, "    Min. Distance: %dcm", min_distance_);
+  ESP_LOGCONFIG(TAG, "    Max. Distance: %dcm", max_distance_);
+  ESP_LOGCONFIG(TAG, "    Min. Change: %dcm", min_change_);
+  ESP_LOGCONFIG(TAG, "    Max. Errors: %d", max_errors_);
   ESP_LOGCONFIG(TAG, "    Sleep timeout: %ds", sleep_timeout_);
-  ESP_LOGCONFIG(TAG, "    Sleep update interval: %dm", sleep_update_interval_);
+  ESP_LOGCONFIG(TAG, "    Sleep update interval: %ds", sleep_update_interval_);
 }
 
 void UltrasonicGarageSonar::send_trigger_pulse() {
@@ -81,5 +79,4 @@ void IRAM_ATTR UltrasonicGarageSonar::interrupt_echo_callback_(uint32_t *interru
 }
 
 } //namespace ultrasonic_garage
-} //namespace cover
 } //namespace esphome

@@ -3,10 +3,9 @@
 #include "esphome/core/hal.h"
 
 namespace esphome {
-namespace cover {
 namespace ultrasonic_garage {
 
-static const char *const TAG = "ultrasonicgarage";
+static const char *const TAG = "ultrasonicgarage.gate";
 
 void UltrasonicGarageGate::setup_gate() {
   ESP_LOGD(TAG, "Initializing Gate...");
@@ -16,7 +15,8 @@ void UltrasonicGarageGate::setup_gate() {
 }
 
 void UltrasonicGarageGate::dump_config() {
-  LOG_COVER("  ", "Ultrasonic Garage Gate", this);
+  const char *const TAG = "ultrasonicgarage";
+  LOG_COVER("  ", "Gate", this);
   LOG_PIN("    Activate Pin: ", activate_pin_);
   if (active_pin_)
     LOG_PIN("    Active Pin: ", activate_pin_);
@@ -29,12 +29,12 @@ void UltrasonicGarageGate::update_gate() {
   reference_timer_ = millis();
   if (trigger_timer_)
     handle_gate_trigger_();
-  if (current_operation != COVER_OPERATION_CLOSING)
+  if (current_operation != cover::COVER_OPERATION_CLOSING)
     handle_gate_operation_();
 }
 
 
-CoverTraits UltrasonicGarageGate::get_traits() {
+cover::CoverTraits UltrasonicGarageGate::get_traits() {
   auto traits = cover::CoverTraits();
   traits.set_is_assumed_state(false);
   traits.set_supports_position(true);
@@ -43,7 +43,7 @@ CoverTraits UltrasonicGarageGate::get_traits() {
   return traits;
 }
 
-void UltrasonicGarageGate::control(const CoverCall &call) {
+void UltrasonicGarageGate::control(const cover::CoverCall &call) {
   // This will be called every time the user requests a state change.  
   if (call.get_position().has_value()) {
     float pos = *call.get_position();
@@ -52,10 +52,10 @@ void UltrasonicGarageGate::control(const CoverCall &call) {
     if (fabs(pos - position) < min_position_delta_)
       return;
     if (pos > position) {
-      current_operation = COVER_OPERATION_CLOSING;
+      current_operation = cover::COVER_OPERATION_CLOSING;
     }
     else {
-      current_operation = COVER_OPERATION_OPENING;
+      current_operation = cover::COVER_OPERATION_OPENING;
     }
     operation_direction_ = current_operation;
     trigger_gate();
@@ -94,7 +94,7 @@ void UltrasonicGarageGate::handle_gate_trigger_() {
     }
     else {
       ESP_LOGD(TAG, "Gate action completed, gate trigger OFF");
-      next_direction_ = (operation_direction_ == COVER_OPERATION_CLOSING) ? COVER_OPERATION_OPENING : COVER_OPERATION_CLOSING;
+      next_direction_ = (operation_direction_ == cover::COVER_OPERATION_CLOSING) ? cover::COVER_OPERATION_OPENING : cover::COVER_OPERATION_CLOSING;
     }
   }  
 }
@@ -112,5 +112,4 @@ void UltrasonicGarageGate::handle_gate_operation_() {
 
 
 } //namespace ultrasonic_garage
-} //namespace cover
 } //namespace esphome

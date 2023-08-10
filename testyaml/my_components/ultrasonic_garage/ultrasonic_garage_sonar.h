@@ -8,7 +8,6 @@
 #endif
 
 namespace esphome {
-namespace cover {
 namespace ultrasonic_garage {
 
 class UltrasonicGarageSonar : public sensor::Sensor, public Component {
@@ -16,16 +15,14 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   void set_sonar_type(bool is_car) { is_car_ = is_car; }
   void set_trigger_pin(GPIOPin *trigger_pin) { trigger_pin_ = trigger_pin; }
   void set_echo_pin(InternalGPIOPin *echo_pin) { echo_pin_ = echo_pin; }
-  void set_min_distance(uint16 min_distance) { min_distance_ = min_distance; }
-  void set_max_distance(uint16 max_distance) { max_distance_ = max_distance; }
-  void set_min_change(uint16 min_change) { min_change_ = min_change; }
-  void set_max_errors(uint16 max_errors) { max_errors_ = max_errors; }
-  void set_timeout_distance(uint16 timeout_m) { timeout_cm_ = timeout_m * 100; timeout_us_ = timeout_cm_ * ULTRASONIC_US_TO_CM; }
+  void set_min_distance(uint16_t min_distance) { min_distance_ = min_distance; }
+  void set_max_distance(uint16_t max_distance) { max_distance_ = max_distance; }
+  void set_min_change(uint16_t min_change) { min_change_ = min_change; }
+  void set_max_errors(uint16_t max_errors) { max_errors_ = max_errors; }
+  void set_timeout_distance(uint16_t timeout_cm) { timeout_cm_ = timeout_cm; timeout_us_ = timeout_cm * ULTRASONIC_US_TO_CM; }
   void set_sleep_update_interval(uint32_t sleep_update_interval) { sleep_update_interval_ = sleep_update_interval; }
   void set_sleep_timeout(uint32_t sleep_timeout) { sleep_timeout_ = sleep_timeout; }
   void set_pulse_time_us(uint32_t pulse_time_us) { pulse_time_us_ = pulse_time_us; }
-  void set_timeout(uint32_t timeout_m) { timeout_cm_ = timeout_m * 100; timeout_us_ = timeout_cm_ * ULTRASONIC_US_TO_CM; }
-  
   uint16_t get_timeout_cm() { return timeout_cm_; }
   uint16_t get_distance_cm() { return distance_cm_; }
   uint16_t get_previous_distance_cm() { return previous_distance_cm_; }
@@ -70,5 +67,4 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
 };
 
 } //namespace ultrasonic_garage
-} //namespace cover
 } //namespace esphome
