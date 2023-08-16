@@ -15,7 +15,7 @@ void UltrasonicGarageSonar::setup_sonar() {
   echo_pin_->attach_interrupt(&UltrasonicGarageSonar::interrupt_echo_callback_, &distance_us_, gpio::INTERRUPT_FALLING_EDGE);
 }
 
-void UltrasonicGarageSonar::update() {
+void UltrasonicGarageSonar::update_sensor(const uint32_t *time_now) {
   if (sleeping_)
     return;
 

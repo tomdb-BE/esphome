@@ -32,7 +32,8 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   void enable_sleep() {sleeping_ = true; }
   void disable_sleep() {sleeping_ = false; }
   float get_setup_priority() const { return setup_priority::DATA; }
-  void update();
+  void update() { const uint32_t time_now = millis(); update_sensor(&time_now); }
+  void update_sensor(const uint32_t *time_now);
   void dump_config() override;
   void send_trigger_pulse();
   void setup_sonar();

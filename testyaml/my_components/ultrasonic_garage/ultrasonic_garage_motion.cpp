@@ -22,15 +22,10 @@ void UltrasonicGarageMotion::dump_config() {
   ESP_LOGCONFIG(TAG, "    Minimum OFF time: %.3fs", min_off / 1000);
 }
 
-void UltrasonicGarageMotion::update() { 
+void UltrasonicGarageMotion::update_sensor(const uint32_t *time_now) { 
   bool sensor_active;
-  uint32_t time_now;
-
-  if (!detection_enabled_)
-    return;
   
-  time_now = millis();
-  if (time_now < timeout_timer_)  
+  if (!detection_enabled_ || *time_now < timeout_timer_)  
     return;
   
   sensor_active = motion_pin_->digital_read();
@@ -42,12 +37,12 @@ void UltrasonicGarageMotion::update() {
     return;
   
   if (sensor_active && min_on_)
-    timeout_timer_ = time_now + min_on_;
+    timeout_timer_ = *time_now + min_on_;
   else if (!sensor_active && min_off_)
-    timeout_timer_ = time_now + min_off_;
+    timeout_timer_ = *time_now + min_off_;
   else timeout_timer_ = 0;
 
-  last_period_ = time_now;
+  last_period_ = *time_now;
   motion_detected_ = sensor_active;
   publish_state(motion_detected_ );
 }

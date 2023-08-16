@@ -20,7 +20,8 @@ class UltrasonicGarageMotion : public binary_sensor::BinarySensor, public Compon
   uint32_t get_state_period() { return millis() - last_period_; }
   bool motion_detected() { return motion_detected_; }
   float get_setup_priority() const { return setup_priority::DATA; }
-  void update();
+  void update() { const uint32_t time_now = millis(); update_sensor(&time_now); }
+  void update_sensor(const uint32_t *time_now);
   void dump_config() override;
   void setup_motion_sensor();
 
