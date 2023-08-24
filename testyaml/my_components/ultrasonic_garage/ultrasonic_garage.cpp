@@ -17,13 +17,10 @@ void UltrasonicGarage::setup() {
     sonar_gate_->setup_sonar();
   if (sonar_car_)
     sonar_car_->setup_sonar();
-  if (lights_) {
-    //lights_->setup();
-    lights_->turn_on();   
-    lights_->set_effect("scanfast");
-  }
   if (gate_)
-    gate_->setup_gate();    
+    gate_->setup_gate();
+  if (light_controller_)
+    light_controller_->turn_on();
 }
 
 void UltrasonicGarage::update() {
@@ -38,8 +35,7 @@ void UltrasonicGarage::update() {
     sonar_car_->update_sensor(&time_now);
   if (gate_)
     gate_->update_gate(&time_now);
-  if (lights_) {}
-    //lights_->toggle();     
+  if (light_controller_) {}       
 }
 
 void UltrasonicGarage::dump_config() {

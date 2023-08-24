@@ -1,12 +1,12 @@
-#include "ultrasonic_garage_lights.h"
+#include "ultrasonic_garage_light_controller.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
 namespace ultrasonic_garage {
 
-static const char *const TAG = "ultrasonicgarage.lights";
+static const char *const TAG = "ultrasonicgarage.light_controller";
 
-void UltrasonicGarageLights::setup() {
+void UltrasonicGarageLightController::setup() {
   return;
 }
 

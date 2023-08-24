@@ -1,15 +1,20 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components.light.types import AddressableLightEffect, AddressableLightState
+from esphome import automation
+from esphome.components.light import LightStateTrigger
+from esphome.components.light.types import AddressableLightEffect, LightState, LightControlAction
 from esphome.components.light.effects import register_addressable_effect
+from esphome.components.light.automation import LIGHT_CONTROL_ACTION_SCHEMA, light_control_to_code
 from esphome import pins
-from esphome.components import cover, sensor, binary_sensor, light
-from esphome.const import (
-    CONF_ID,    
+from esphome.components import cover, sensor, binary_sensor
+from esphome.const import (    
+    CONF_ID,
+    CONF_TYPE_ID,
     CONF_NAME,
     CONF_PIN,
-    CONF_LIGHT_ID,
-    CONF_DEVICE_CLASS,    
+    CONF_DEVICE_CLASS,
+    CONF_THEN,
+    CONF_TRIGGER_ID,
     DEVICE_CLASS_GATE,
     DEVICE_CLASS_GARAGE,
     DEVICE_CLASS_GARAGE_DOOR,    
@@ -17,20 +22,21 @@ from esphome.const import (
     DEVICE_CLASS_MOTION,
     STATE_CLASS_MEASUREMENT,
     UNIT_CENTIMETER,
-    ICON_ARROW_EXPAND_VERTICAL,    
+    ICON_ARROW_EXPAND_VERTICAL,
 )
 
 AUTO_LOAD = ["cover", "sensor", "binary_sensor", "light"]
 
 ICON_GARAGE = "mdi:garage"
-
-CONF_GARAGE_GATE = "gate"
-CONF_GARAGE_SONAR_GATE = "gate_sonar"
-CONF_GARAGE_SENSOR_GATE = "gate_sensor"
-CONF_GARAGE_SONAR_CAR = "car_sonar"
-CONF_GARAGE_MOTION = "motion_sensor"
-CONF_GARAGE_LIGHT = "light_front"
-CONF_GARAGE_UPDATE_INTERVAL = "update_interval"
+CONF_LIGHT_CONTROLLER_ID = "light_control_id"
+CONF_LIGHT_CONTROLLER_ACTIONS = "actions"
+CONF_LIGHT_CONTROLLER_OPENING = "opening"
+CONF_LIGHT_CONTROLLER_CLOSING = "closing"
+CONF_LIGHT_CONTROLLER_MOTION = "motion"
+CONF_LIGHT_CONTROLLER_DISTANCE_GATE = "distance_gate"
+CONF_LIGHT_CONTROLLER_DISTANCE_CAR = "distance_car"
+CONF_LIGHT_CONTROLLER_IDLE = "idle"
+CONF_LIGHT_STATE_ID = "light_state_id"
 
 CONF_GATE_ID = "gate_id"
 CONF_GATE_ACTIVATE_PIN = "activate_pin"
@@ -55,6 +61,14 @@ CONF_MOTION_INVERTED = "inverted"
 CONF_MOTION_MIN_ON = "min_on"
 CONF_MOTION_MIN_OFF = "min_off"
 
+CONF_GARAGE_GATE = "gate"
+CONF_GARAGE_UPDATE_INTERVAL = "update_interval"
+CONF_GARAGE_SONAR_GATE = "gate_sonar"
+CONF_GARAGE_SENSOR_GATE = "gate_sensor"
+CONF_GARAGE_SONAR_CAR = "car_sonar"
+CONF_GARAGE_MOTION = "motion_sensor"
+CONF_GARAGE_LIGHT_CONTROLLER = "light_control"
+
 ultrasonic_garage_ns = cg.esphome_ns.namespace("ultrasonic_garage")
 
 UltrasonicGarage = ultrasonic_garage_ns.class_(
@@ -69,9 +83,27 @@ UltrasonicGarageSonar = ultrasonic_garage_ns.class_(
 UltrasonicGarageMotion = ultrasonic_garage_ns.class_(
     "UltrasonicGarageMotion", cg.Component, binary_sensor.BinarySensor
 )
-UltrasonicGarageLights = ultrasonic_garage_ns.class_(
-    "UltrasonicGarageLights", cg.Component
+UltrasonicGarageLightController = ultrasonic_garage_ns.class_(
+    "UltrasonicGarageLightController"
 )
+UltrasonicGarageAction = ultrasonic_garage_ns.struct(
+    "UltrasonicGarageAction"
+)
+UltrasonicGarageActionType = ultrasonic_garage_ns.enum(
+    "UltrasonicGarageActionType"
+)
+UltrasonicGarageLightControllerTrigger = ultrasonic_garage_ns.class_(
+    "UltrasonicGarageLightControllerTrigger", automation.Trigger
+)
+
+ACTION_TYPE = {
+  "OPENING": UltrasonicGarageActionType.OPENING,
+  "CLOSING": UltrasonicGarageActionType.CLOSING,
+  "DISTANCE_GATE": UltrasonicGarageActionType.DISTANCE_GATE,
+  "DISTANCE_CAR": UltrasonicGarageActionType.DISTANCE_CAR,
+  "MOTION": UltrasonicGarageActionType.MOTION,
+  "IDLE": UltrasonicGarageActionType.IDLE,
+}
 
 ScanFastLightEffect = ultrasonic_garage_ns.class_(
     "ScanFastLightEffect", cg.Component, AddressableLightEffect
@@ -86,14 +118,28 @@ ScanFastLightEffect = ultrasonic_garage_ns.class_(
 async def scanfast_light_effect_to_code(config, effect_id):
     effect = cg.new_Pvariable(effect_id, config[CONF_NAME])    
     return effect
- 
-LED_SCHEMA = light.ADDRESSABLE_LIGHT_SCHEMA.extend(
-    {
-        cv.GenerateID(): cv.declare_id(UltrasonicGarageLights),
-        cv.Required(CONF_LIGHT_ID): cv.use_id(AddressableLightState),
-        cv.Optional(CONF_NAME, default="UNSET"): cv.string,   
+
+LIGHT_CONTROLLER_ACTION_SCHEMA = LIGHT_CONTROL_ACTION_SCHEMA.extend(
+    {                                
+        cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UltrasonicGarageLightControllerTrigger)
     }
 )
+
+LIGHT_CONTROLLER_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(CONF_LIGHT_CONTROLLER_ID): cv.declare_id(UltrasonicGarageLightController),
+        cv.Optional(CONF_NAME, default="UNSET"): cv.string,        
+        cv.Optional(CONF_LIGHT_CONTROLLER_OPENING): automation.validate_automation(
+            {                                
+                cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UltrasonicGarageLightControllerTrigger),
+            }
+        ),
+    }
+)
+
+@automation.register_action("set_light", LightControlAction, LIGHT_CONTROL_ACTION_SCHEMA)
+async def set_light_to_code(config, action_id, template_arg, args):
+    return await light_control_to_code(config, action_id, template_arg, args)
 
 GATE_SCHEMA = (cover.COVER_SCHEMA.extend(
         {   
@@ -102,11 +148,11 @@ GATE_SCHEMA = (cover.COVER_SCHEMA.extend(
             cv.Optional(CONF_NAME, default="UNSET"): cv.string,
             cv.Optional(CONF_GATE_MIN_POSITION_DELTA, default=0.05): cv.percentage,
             cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE_DOOR): cv.one_of(DEVICE_CLASS_GARAGE_DOOR, DEVICE_CLASS_GATE),
-            cv.Optional(CONF_GATE_TRIGGER_TIME, default="400ms"):  cv.All(
+            cv.Optional(CONF_GATE_TRIGGER_TIME, default="400ms"): cv.All(
                 cv.positive_time_period_milliseconds,
                 cv.Range(min=cv.TimePeriod(milliseconds=20), max=cv.TimePeriod(milliseconds=2000)),
             ),
-            cv.Optional(CONF_GATE_OPERATION_TIMEOUT, default="120s"):  cv.All(
+            cv.Optional(CONF_GATE_OPERATION_TIMEOUT, default="120s"): cv.All(
                 cv.positive_time_period_seconds,
                 cv.Range(min=cv.TimePeriod(seconds=2), max=cv.TimePeriod(seconds=600)),
             ),                      
@@ -164,7 +210,7 @@ CONFIG_SCHEMA = (cv.Schema(
             cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_SCHEMA,
             cv.Optional(CONF_GARAGE_SENSOR_GATE): MOTION_SCHEMA,
             cv.Optional(CONF_GARAGE_MOTION) : MOTION_SCHEMA,
-            cv.Optional(CONF_GARAGE_LIGHT) : LED_SCHEMA,
+            cv.Optional(CONF_GARAGE_LIGHT_CONTROLLER) : LIGHT_CONTROLLER_SCHEMA,
         }
     ).extend(cv.polling_component_schema("200ms"))
 )
@@ -217,14 +263,22 @@ async def add_motion_sensor(motion_config):
 
     return motion_ptr
 
-async def add_light(light_config):
-    light_ptr = cg.new_Pvariable(light_config[CONF_ID])
-    src_light_ptr = await cg.get_variable(light_config[CONF_LIGHT_ID])    
-    cg.register_component(light_ptr, light_config)
-    cg.add(light_ptr.set_light(src_light_ptr))    
-    return light_ptr
+async def add_light_controller(light_controller_config):
+    light_controller = cg.new_Pvariable(light_controller_config[CONF_LIGHT_CONTROLLER_ID])
+    for autom in light_controller_config[CONF_LIGHT_CONTROLLER_OPENING]:
+        '''
+        for action in autom[CONF_THEN]:
+            print(action)
+            light_state = await cg.get_variable(action["set_light"][CONF_ID])        
+            
+        '''
+        trigger = cg.new_Pvariable(autom[CONF_TRIGGER_ID])        
+        await automation.build_automation(trigger, [], autom)
+        controller_light_action = UltrasonicGarageAction(trigger, ACTION_TYPE["OPENING"])
+        cg.add(light_controller.add_light_action(controller_light_action))            
+    return light_controller
 
-async def to_code(config):
+async def to_code(config):    
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     gate_config = config[CONF_GARAGE_GATE]
@@ -255,12 +309,8 @@ async def to_code(config):
         if motion_sensor_config[CONF_NAME] == "UNSET":
             motion_sensor_config[CONF_NAME] = config[CONF_NAME] + " Motion"
         motion_sensor = await add_motion_sensor(motion_sensor_config)                     
-        cg.add(var.set_motion_sensor(motion_sensor))         
-    if CONF_GARAGE_LIGHT in config:
-        light_config = config[CONF_GARAGE_LIGHT] 
-        if light_config[CONF_NAME] == "UNSET":
-            light_config[CONF_NAME] = config[CONF_NAME] + " Light"    
-        lights = await add_light(light_config)
-        cg.add(var.set_lights(lights))                
-        
-    
+        cg.add(var.set_motion_sensor(motion_sensor))
+    if CONF_GARAGE_LIGHT_CONTROLLER in config:
+        light_controller_config = config[CONF_GARAGE_LIGHT_CONTROLLER]        
+        light_controller = await add_light_controller(light_controller_config)
+        cg.add(var.set_light_controller(light_controller))
