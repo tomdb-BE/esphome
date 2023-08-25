@@ -67,5 +67,8 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   uint32_t previous_distance_us_ = 0;  
 };
 
+static UltrasonicGarageSonar* distance_gate_sonar;
+static UltrasonicGarageSonar* distance_car_sonar;
+
 } //namespace ultrasonic_garage
 } //namespace esphome

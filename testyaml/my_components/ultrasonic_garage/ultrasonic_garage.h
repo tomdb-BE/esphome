@@ -11,6 +11,10 @@ namespace ultrasonic_garage {
 
 class UltrasonicGarage : public PollingComponent {
  public:
+  UltrasonicGarage() : PollingComponent() {}
+  ~UltrasonicGarage() {
+    delete light_controller_;
+  }
   void set_gate(UltrasonicGarageGate *gate) { gate_ = gate; }
   void set_sonar_gate(UltrasonicGarageSonar *sonar_gate) { sonar_gate_ = sonar_gate; }
   void set_sonar_car(UltrasonicGarageSonar *sonar_car) { sonar_car_ = sonar_car; }

@@ -35,7 +35,7 @@ void UltrasonicGarage::update() {
     sonar_car_->update_sensor(&time_now);
   if (gate_)
     gate_->update_gate(&time_now);
-  if (light_controller_) {}       
+  if (light_controller_) {}
 }
 
 void UltrasonicGarage::dump_config() {

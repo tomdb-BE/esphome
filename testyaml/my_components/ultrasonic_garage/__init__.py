@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome.core import ID
 from esphome.automation import validate_automation, build_automation, register_action, Trigger
 from esphome.components.light.types import AddressableLightEffect, LightControlAction
 from esphome.components.light.effects import register_addressable_effect
@@ -8,6 +9,7 @@ from esphome import pins
 from esphome.components import cover, sensor, binary_sensor
 from esphome.const import (    
     CONF_ID,
+    CONF_SENSOR_ID,
     CONF_NAME,
     CONF_PIN,
     CONF_DEVICE_CLASS,
@@ -23,6 +25,9 @@ from esphome.const import (
 )
 
 AUTO_LOAD = ["cover", "sensor", "binary_sensor", "light"]
+
+CONF_EFFECT_MIRRORED = "mirrored"
+CONF_EFFECT_REVERSED = "reversed"
 
 ICON_GARAGE = "mdi:garage"
 CONF_LIGHT_CONTROLLER_ID = "light_control_id"
@@ -101,15 +106,57 @@ ACTION_TYPE = {
 ScanFastLightEffect = ultrasonic_garage_ns.class_(
     "ScanFastLightEffect", cg.Component, AddressableLightEffect
 )
-
 @register_addressable_effect(
-    "scanfast",
+    "scan_fast",
     ScanFastLightEffect,
-    "Scanfast",
-    {},
+    "Scan Fast",
+    {
+        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,
+        cv.Optional(CONF_EFFECT_REVERSED, default=False) : cv.boolean,
+    },
 )
 async def scanfast_light_effect_to_code(config, effect_id):
-    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])    
+    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
+    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
+    cg.add(effect.set_reversed(config[CONF_EFFECT_REVERSED]))    
+    return effect
+
+FillFastLightEffect = ultrasonic_garage_ns.class_(
+    "FillFastLightEffect", AddressableLightEffect
+)
+@register_addressable_effect(
+    "fill_fast",
+    FillFastLightEffect,
+    "Fill Fast",
+    {
+        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,
+        cv.Optional(CONF_EFFECT_REVERSED, default=False) : cv.boolean,
+    },
+)
+async def fill_fast_light_effect_to_code(config, effect_id):
+    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
+    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
+    cg.add(effect.set_reversed(config[CONF_EFFECT_REVERSED]))
+    return effect
+
+GateDistanceLightEffect = ultrasonic_garage_ns.class_(
+    "GateDistanceLightEffect", AddressableLightEffect
+)
+@register_addressable_effect(
+    "gate_distance",
+    GateDistanceLightEffect,
+    "Gate Distance",
+    {
+        cv.Optional(CONF_SENSOR_ID) : cv.use_id(UltrasonicGarageSonar),
+        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,        
+    },
+)
+async def gate_distance_light_effect_to_code(config, effect_id):
+    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
+    if CONF_SENSOR_ID in config:
+        sonar_sensor = await cg.get_variable(config[CONF_SENSOR_ID])
+        cg.add(effect.set_sonar_sensor(sonar_sensor))
+    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
     return effect
 
 LIGHT_CONTROLLER_SCHEMA = cv.Schema(
@@ -156,7 +203,7 @@ GATE_SCHEMA = (cover.COVER_SCHEMA.extend(
         {   
             cv.GenerateID(): cv.declare_id(UltrasonicGarageGate),
             cv.Required(CONF_GATE_ACTIVATE_PIN): pins.gpio_output_pin_schema,
-            cv.Optional(CONF_NAME, default="UNSET"): cv.string,
+            cv.Optional(CONF_NAME, default="Gate"): cv.string,
             cv.Optional(CONF_GATE_MIN_POSITION_DELTA, default=0.05): cv.percentage,
             cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE_DOOR): cv.one_of(DEVICE_CLASS_GARAGE_DOOR, DEVICE_CLASS_GATE),
             cv.Optional(CONF_GATE_TRIGGER_TIME, default="400ms"): cv.All(
@@ -182,8 +229,7 @@ SONAR_SCHEMA = (sensor.sensor_schema(
     .extend(
         {
             cv.Required(CONF_SONAR_TRIGGER_PIN): pins.gpio_output_pin_schema,
-            cv.Required(CONF_SONAR_ECHO_PIN): pins.internal_gpio_input_pin_schema, 
-            cv.Optional(CONF_NAME, default="UNSET"): cv.string,           
+            cv.Required(CONF_SONAR_ECHO_PIN): pins.internal_gpio_input_pin_schema,                           
             cv.Optional(CONF_SONAR_MIN_DISTANCE, default="10cm"): cv.All(cv.distance, cv.float_range(max=650)),
             cv.Optional(CONF_SONAR_MAX_DISTANCE, default="200cm"): cv.All(cv.distance, cv.float_range(max=650)), 
             cv.Optional(CONF_SONAR_TIMEOUT_DISTANCE, default="300cm"): cv.All(cv.distance, cv.float_range(max=650)),
@@ -194,6 +240,18 @@ SONAR_SCHEMA = (sensor.sensor_schema(
             cv.Optional(CONF_SONAR_MAX_ERRORS, default=0): cv.positive_int,
         }
     )    
+)
+SONAR_GATE_SCHEMA = (SONAR_SCHEMA.extend(
+        {
+            cv.Optional(CONF_NAME, default="Sonar Sensor Gate"): cv.string,
+        }
+    )  
+)
+SONAR_CAR_SCHEMA = (SONAR_SCHEMA.extend(
+        {
+            cv.Optional(CONF_NAME, default="Sonar Sensor Car"): cv.string,
+        }
+    )  
 )
 
 MOTION_SCHEMA = (binary_sensor.binary_sensor_schema(
@@ -210,6 +268,18 @@ MOTION_SCHEMA = (binary_sensor.binary_sensor_schema(
         }
     )    
 )
+SENSOR_GATE_SCHEMA = (MOTION_SCHEMA.extend(
+        {
+            cv.Optional(CONF_NAME, default="Gate Sensor"): cv.string,
+        }
+    )  
+)
+GARAGE_MOTION_SCHEMA = (MOTION_SCHEMA.extend(
+        {
+            cv.Optional(CONF_NAME, default="Motion Sensor"): cv.string,
+        }
+    )  
+)
 
 CONFIG_SCHEMA = (cv.Schema(
         {
@@ -217,10 +287,10 @@ CONFIG_SCHEMA = (cv.Schema(
             cv.Required(CONF_GARAGE_GATE): GATE_SCHEMA,
             cv.Optional(CONF_DEVICE_CLASS, default=DEVICE_CLASS_GARAGE): cv.one_of(DEVICE_CLASS_GARAGE, DEVICE_CLASS_GATE),           
             cv.Optional(CONF_NAME, default="Ultrasonic Garage"): cv.string,
-            cv.Optional(CONF_GARAGE_SONAR_GATE): SONAR_SCHEMA,
-            cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_SCHEMA,
-            cv.Optional(CONF_GARAGE_SENSOR_GATE): MOTION_SCHEMA,
-            cv.Optional(CONF_GARAGE_MOTION) : MOTION_SCHEMA,
+            cv.Optional(CONF_GARAGE_SONAR_GATE): SONAR_GATE_SCHEMA,
+            cv.Optional(CONF_GARAGE_SONAR_CAR): SONAR_CAR_SCHEMA,
+            cv.Optional(CONF_GARAGE_SENSOR_GATE): SENSOR_GATE_SCHEMA,
+            cv.Optional(CONF_GARAGE_MOTION) : GARAGE_MOTION_SCHEMA,
             cv.Optional(CONF_GARAGE_LIGHT_CONTROLLER) : LIGHT_CONTROLLER_SCHEMA,
         }
     ).extend(cv.polling_component_schema("200ms"))
@@ -279,8 +349,7 @@ async def add_light_controller(light_controller_config):
     for action_type_config in light_controller_config:
         if action_type_config == "light_control_id":
             continue
-        action_type = str(action_type_config)
-        print(action_type)
+        action_type = str(action_type_config)        
         for automation_config in light_controller_config.get(action_type_config, []):                
             trigger = cg.new_Pvariable(automation_config[CONF_TRIGGER_ID])
             await build_automation(trigger, [], automation_config)                
@@ -291,35 +360,25 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     gate_config = config[CONF_GARAGE_GATE]
-    if gate_config[CONF_NAME] == "UNSET":
-        gate_config[CONF_NAME] = config[CONF_NAME] + " Gate"
-    gate = await add_gate(config[CONF_GARAGE_GATE])
+    gate = await add_gate(gate_config)
     cg.add(var.set_gate(gate))
     if CONF_GARAGE_SONAR_GATE in config:
         sonar_gate_config = config[CONF_GARAGE_SONAR_GATE]
-        if sonar_gate_config[CONF_NAME] == "UNSET":
-            sonar_gate_config[CONF_NAME] = config[CONF_NAME] + " Sonar Gate"
         sonar_gate = await add_sonar(sonar_gate_config)
-        cg.add(var.set_sonar_gate(sonar_gate))
+        cg.add(var.set_sonar_gate(sonar_gate))        
     if CONF_GARAGE_SONAR_CAR in config:
         sonar_car_config = config[CONF_GARAGE_SONAR_CAR]
-        if sonar_car_config[CONF_NAME] == "UNSET":
-            sonar_car_config[CONF_NAME] = config[CONF_NAME] + " Sonar Car"
         sonar_car = await add_sonar(sonar_car_config, True)   
         cg.add(var.set_sonar_car(sonar_car))
     if CONF_GARAGE_SENSOR_GATE in config:
         gate_sensor_config = config[CONF_GARAGE_SENSOR_GATE]
-        if gate_sensor_config[CONF_NAME] == "UNSET":
-            gate_sensor_config[CONF_NAME] = config[CONF_NAME] + " Gate Sensor"
         gate_sensor = await add_motion_sensor(gate_sensor_config)             
-        cg.add(var.set_gate_sensor(gate_sensor))          
+        cg.add(var.set_gate_sensor(gate_sensor))   
     if CONF_GARAGE_MOTION in config:
         motion_sensor_config = config[CONF_GARAGE_MOTION]
-        if motion_sensor_config[CONF_NAME] == "UNSET":
-            motion_sensor_config[CONF_NAME] = config[CONF_NAME] + " Motion"
         motion_sensor = await add_motion_sensor(motion_sensor_config)                     
         cg.add(var.set_motion_sensor(motion_sensor))
     if CONF_GARAGE_LIGHT_CONTROLLER in config:
         light_controller_config = config[CONF_GARAGE_LIGHT_CONTROLLER]        
         light_controller = await add_light_controller(light_controller_config)
-        cg.add(var.set_light_controller(light_controller))
+        cg.add(var.set_light_controller(light_controller))    
