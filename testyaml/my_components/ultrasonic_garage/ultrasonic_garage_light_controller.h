@@ -23,19 +23,21 @@ enum UltrasonicGarageActionType {
   IDLE
 };
 
+
 class UltrasonicGarageLightControllerTrigger : public Trigger<> {
  public:
-  UltrasonicGarageLightControllerTrigger() {}
+  UltrasonicGarageLightControllerTrigger() { this->trigger(); };
  protected:
   bool last_on_;
 };
 
+
 struct UltrasonicGarageAction {
   UltrasonicGarageAction(UltrasonicGarageLightControllerTrigger* trigger_in, UltrasonicGarageActionType action_type_in) {
-    action_trigger = trigger_in;
+    trigger = trigger_in;
     action_type = action_type_in;
   };
-  UltrasonicGarageLightControllerTrigger* action_trigger;
+  UltrasonicGarageLightControllerTrigger* trigger;
   UltrasonicGarageActionType action_type;
 };
 
@@ -43,9 +45,9 @@ class UltrasonicGarageLightController {
  public:
   void add_light_action(UltrasonicGarageAction light_action) { light_actions_.push_back(light_action); }
   void setup();
-  void turn_on() { 
-    for (auto light_action : light_actions_) {
-       light_action.action_trigger->trigger();
+  void turn_on() {
+    for (UltrasonicGarageAction light_action : light_actions_) {
+      light_action.trigger->trigger();
     }
   }
  protected:

@@ -4,16 +4,14 @@ from esphome import automation
 from esphome.components.light import LightStateTrigger
 from esphome.components.light.types import AddressableLightEffect, LightState, LightControlAction
 from esphome.components.light.effects import register_addressable_effect
-from esphome.components.light.automation import LIGHT_CONTROL_ACTION_SCHEMA, light_control_to_code
+from esphome.components.light.automation import LIGHT_TURN_ON_ACTION_SCHEMA, light_control_to_code
 from esphome import pins
 from esphome.components import cover, sensor, binary_sensor
 from esphome.const import (    
     CONF_ID,
-    CONF_TYPE_ID,
     CONF_NAME,
     CONF_PIN,
     CONF_DEVICE_CLASS,
-    CONF_THEN,
     CONF_TRIGGER_ID,
     DEVICE_CLASS_GATE,
     DEVICE_CLASS_GARAGE,
@@ -36,7 +34,6 @@ CONF_LIGHT_CONTROLLER_MOTION = "motion"
 CONF_LIGHT_CONTROLLER_DISTANCE_GATE = "distance_gate"
 CONF_LIGHT_CONTROLLER_DISTANCE_CAR = "distance_car"
 CONF_LIGHT_CONTROLLER_IDLE = "idle"
-CONF_LIGHT_STATE_ID = "light_state_id"
 
 CONF_GATE_ID = "gate_id"
 CONF_GATE_ACTIVATE_PIN = "activate_pin"
@@ -119,25 +116,19 @@ async def scanfast_light_effect_to_code(config, effect_id):
     effect = cg.new_Pvariable(effect_id, config[CONF_NAME])    
     return effect
 
-LIGHT_CONTROLLER_ACTION_SCHEMA = LIGHT_CONTROL_ACTION_SCHEMA.extend(
-    {                                
-        cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UltrasonicGarageLightControllerTrigger)
-    }
-)
-
 LIGHT_CONTROLLER_SCHEMA = cv.Schema(
     {
         cv.GenerateID(CONF_LIGHT_CONTROLLER_ID): cv.declare_id(UltrasonicGarageLightController),
         cv.Optional(CONF_NAME, default="UNSET"): cv.string,        
         cv.Optional(CONF_LIGHT_CONTROLLER_OPENING): automation.validate_automation(
-            {                                
+            {
                 cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UltrasonicGarageLightControllerTrigger),
             }
         ),
     }
 )
 
-@automation.register_action("set_light", LightControlAction, LIGHT_CONTROL_ACTION_SCHEMA)
+@automation.register_action("set_light", LightControlAction, LIGHT_TURN_ON_ACTION_SCHEMA)
 async def set_light_to_code(config, action_id, template_arg, args):
     return await light_control_to_code(config, action_id, template_arg, args)
 
@@ -264,18 +255,20 @@ async def add_motion_sensor(motion_config):
     return motion_ptr
 
 async def add_light_controller(light_controller_config):
-    light_controller = cg.new_Pvariable(light_controller_config[CONF_LIGHT_CONTROLLER_ID])
-    for autom in light_controller_config[CONF_LIGHT_CONTROLLER_OPENING]:
+    light_controller = cg.new_Pvariable(light_controller_config[CONF_LIGHT_CONTROLLER_ID])    
+    for automation_config in light_controller_config.get(CONF_LIGHT_CONTROLLER_OPENING, []):
+        print(automation_config)
+        trigger = cg.new_Pvariable(automation_config[CONF_TRIGGER_ID])
+        await automation.build_automation(trigger, [], automation_config)
+        #print(automation_config)        
         '''
-        for action in autom[CONF_THEN]:
-            print(action)
-            light_state = await cg.get_variable(action["set_light"][CONF_ID])        
-            
+        for action_config in automation_config[CONF_THEN]:
+            print(action_config)
+            light_states.append(await cg.get_variable(action_config["set_light"][CONF_ID]))        
+        light_state = await cg.get_variable(automation_config["set_light"][CONF_ID])
         '''
-        trigger = cg.new_Pvariable(autom[CONF_TRIGGER_ID])        
-        await automation.build_automation(trigger, [], autom)
-        controller_light_action = UltrasonicGarageAction(trigger, ACTION_TYPE["OPENING"])
-        cg.add(light_controller.add_light_action(controller_light_action))            
+        controller_light_action = UltrasonicGarageAction(trigger, ACTION_TYPE["OPENING"])        
+        cg.add(light_controller.add_light_action(controller_light_action))        
     return light_controller
 
 async def to_code(config):    
