@@ -76,7 +76,7 @@ class FillFastLightEffect : public light::AddressableLightEffect, public Compone
 class GateDistanceLightEffect : public light::AddressableLightEffect, public Component {
  public:
   GateDistanceLightEffect(const std::string &name) : AddressableLightEffect(name) {};
-  void set_sonar_sensor(UltrasonicGarageSonar* sonar_sensor) { sonar_sensor_ = sonar_sensor; }
+  void set_sonar_sensor(UltrasonicGarageSonar* sonar_sensor) { if (sonar_sensor && !sonar_sensor->is_car()) sonar_sensor_ = sonar_sensor; }
   void set_mirrored(bool mirrored) { mirrored_ = mirrored; } 
   void start() override;
   void apply(light::AddressableLight &it, const Color &current_color) override;
@@ -89,7 +89,7 @@ class GateDistanceLightEffect : public light::AddressableLightEffect, public Com
 class CarDistanceLightEffect : public light::AddressableLightEffect, public Component {
  public:
   CarDistanceLightEffect(const std::string &name) : AddressableLightEffect(name) {};
-  void set_sonar_sensor(UltrasonicGarageSonar* sonar_sensor) { sonar_sensor_ = sonar_sensor; }  
+  void set_sonar_sensor(UltrasonicGarageSonar* sonar_sensor) { if (sonar_sensor && sonar_sensor->is_car()) sonar_sensor_ = sonar_sensor; }
   void set_mirrored(bool mirrored) { mirrored_ = mirrored; }  
   void start() override;
   void apply(light::AddressableLight &it, const Color &current_color) override;

@@ -28,6 +28,7 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   uint16_t get_previous_distance_cm() { return previous_distance_cm_; }
   bool distance_increasing() { return distance_cm_ && (distance_cm_ > previous_distance_cm_); }
   bool distance_decreasing() { return distance_cm_ && (distance_cm_ < previous_distance_cm_); }
+  bool is_car() { return is_car_; }
   bool sleeping() {return sleeping_; }
   void enable_sleep() {sleeping_ = true; }
   void disable_sleep() {sleeping_ = false; }

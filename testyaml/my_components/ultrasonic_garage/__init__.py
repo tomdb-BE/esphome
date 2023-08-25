@@ -158,6 +158,25 @@ async def gate_distance_light_effect_to_code(config, effect_id):
         cg.add(effect.set_sonar_sensor(sonar_sensor))
     cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
     return effect
+CarDistanceLightEffect = ultrasonic_garage_ns.class_(
+    "CarDistanceLightEffect", AddressableLightEffect
+)
+@register_addressable_effect(
+    "car_distance",
+    GateDistanceLightEffect,
+    "Car Distance",
+    {
+        cv.Optional(CONF_SENSOR_ID) : cv.use_id(UltrasonicGarageSonar),
+        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,        
+    },
+)
+async def car_distance_light_effect_to_code(config, effect_id):
+    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
+    if CONF_SENSOR_ID in config:
+        sonar_sensor = await cg.get_variable(config[CONF_SENSOR_ID])
+        cg.add(effect.set_sonar_sensor(sonar_sensor))
+    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
+    return effect
 
 LIGHT_CONTROLLER_SCHEMA = cv.Schema(
     {
