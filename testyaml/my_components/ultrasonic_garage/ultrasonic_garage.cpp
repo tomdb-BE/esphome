@@ -20,7 +20,7 @@ void UltrasonicGarage::setup() {
   if (gate_)
     gate_->setup_gate();
   if (light_controller_)
-    light_controller_->activate_triggers(DISTANCE_CAR);
+    light_controller_->setup();
 }
 
 void UltrasonicGarage::update() {
@@ -35,7 +35,17 @@ void UltrasonicGarage::update() {
     sonar_car_->update_sensor(&time_now);
   if (gate_)
     gate_->update_gate(&time_now);
-  if (light_controller_) {}
+  if (light_controller_) {
+    /*
+    static uint32_t test = millis() + 2000;
+    static bool test_effect_type = false;
+    if (millis() > test) {
+      test = millis() + 2000;      
+      (test_effect_type) ? light_controller_->activate_triggers(DISTANCE_CAR) : light_controller_->activate_triggers(MOTION);
+      test_effect_type = !test_effect_type;    
+    }
+    */
+  }
 }
 
 void UltrasonicGarage::dump_config() {

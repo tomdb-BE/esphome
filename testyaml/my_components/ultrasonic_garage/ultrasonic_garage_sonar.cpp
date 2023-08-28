@@ -13,9 +13,6 @@ void UltrasonicGarageSonar::setup_sonar() {
   echo_pin_->setup();
   echo_isr_ = echo_pin_->to_isr();
   echo_pin_->attach_interrupt(&UltrasonicGarageSonar::interrupt_echo_callback_, &distance_us_, gpio::INTERRUPT_FALLING_EDGE);
-  if (is_car_)
-   distance_car_sonar = this;
-  else distance_gate_sonar = this; 
 }
 
 void UltrasonicGarageSonar::update_sensor(const uint32_t *time_now) {

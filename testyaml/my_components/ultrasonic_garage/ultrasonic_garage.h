@@ -21,6 +21,7 @@ class UltrasonicGarage : public PollingComponent {
   void set_motion_sensor(UltrasonicGarageMotion *motion_sensor) { motion_sensor_ = motion_sensor; }
   void set_gate_sensor(UltrasonicGarageMotion *gate_sensor) { gate_sensor_ = gate_sensor; }
   void set_light_controller(UltrasonicGarageLightController *light_controller) { light_controller_ = light_controller; }
+  float get_setup_priority() const override { return esphome::setup_priority::DATA; }
   void dump_config() override;  
   void setup();
   void update();

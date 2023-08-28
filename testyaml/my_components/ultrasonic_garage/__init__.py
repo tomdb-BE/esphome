@@ -1,17 +1,19 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.core import ID
-from esphome.automation import validate_automation, build_automation, register_action, Trigger
+from esphome.automation import validate_automation, build_automation, register_action, Trigger, maybe_simple_id
 from esphome.components.light.types import AddressableLightEffect, LightControlAction
-from esphome.components.light.effects import register_addressable_effect
-from esphome.components.light.automation import LIGHT_TURN_ON_ACTION_SCHEMA, light_control_to_code
+from esphome.components.light.effects import EFFECTS_REGISTRY, ADDRESSABLE_EFFECTS, register_addressable_effect, validate_effects
+from esphome.components.light.automation import LIGHT_CONTROL_ACTION_SCHEMA, LIGHT_TURN_ON_ACTION_SCHEMA, light_control_to_code
 from esphome import pins
 from esphome.components import cover, sensor, binary_sensor
 from esphome.const import (    
     CONF_ID,
-    CONF_SENSOR_ID,
+    CONF_STATE,
     CONF_NAME,
     CONF_PIN,
+    CONF_THEN,
+    CONF_EFFECTS,
     CONF_DEVICE_CLASS,
     CONF_TRIGGER_ID,
     DEVICE_CLASS_GATE,
@@ -21,7 +23,7 @@ from esphome.const import (
     DEVICE_CLASS_MOTION,
     STATE_CLASS_MEASUREMENT,
     UNIT_CENTIMETER,
-    ICON_ARROW_EXPAND_VERTICAL,
+    ICON_ARROW_EXPAND_VERTICAL,    
 )
 
 AUTO_LOAD = ["cover", "sensor", "binary_sensor", "light"]
@@ -103,84 +105,54 @@ ACTION_TYPE = {
   "IDLE": UltrasonicGarageActionType.IDLE,
 }
 
-ScanFastLightEffect = ultrasonic_garage_ns.class_(
-    "ScanFastLightEffect", cg.Component, AddressableLightEffect
-)
-@register_addressable_effect(
-    "scan_fast",
-    ScanFastLightEffect,
-    "Scan Fast",
-    {
-        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,
-        cv.Optional(CONF_EFFECT_REVERSED, default=False) : cv.boolean,
-    },
-)
-async def scanfast_light_effect_to_code(config, effect_id):
-    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
-    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
-    cg.add(effect.set_reversed(config[CONF_EFFECT_REVERSED]))    
-    return effect
+EXTRA_EFFECTS_BASE = ["scan_fast", "fill_fast", "distance_gate", "distance_car"]
 
+EXTRA_EFFECTS = []
+for base_effect in EXTRA_EFFECTS_BASE:
+    EXTRA_EFFECTS.append(base_effect)
+    EXTRA_EFFECTS.append(base_effect + "_mirrored")
+    EXTRA_EFFECTS.append(base_effect + "_reversed")
+    EXTRA_EFFECTS.append(base_effect + "_mirrored_reversed")
+
+ScanFastLightEffect = ultrasonic_garage_ns.class_(
+    "ScanFastLightEffect", AddressableLightEffect
+)
 FillFastLightEffect = ultrasonic_garage_ns.class_(
     "FillFastLightEffect", AddressableLightEffect
 )
-@register_addressable_effect(
-    "fill_fast",
-    FillFastLightEffect,
-    "Fill Fast",
-    {
-        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,
-        cv.Optional(CONF_EFFECT_REVERSED, default=False) : cv.boolean,
-    },
+DistanceGateLightEffect = ultrasonic_garage_ns.class_(
+    "DistanceGateLightEffect", AddressableLightEffect
 )
-async def fill_fast_light_effect_to_code(config, effect_id):
-    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
-    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
-    cg.add(effect.set_reversed(config[CONF_EFFECT_REVERSED]))
-    return effect
-
-GateDistanceLightEffect = ultrasonic_garage_ns.class_(
-    "GateDistanceLightEffect", AddressableLightEffect
+DistanceCarLightEffect = ultrasonic_garage_ns.class_(
+    "DistanceCarLightEffect", AddressableLightEffect
 )
-@register_addressable_effect(
-    "gate_distance",
-    GateDistanceLightEffect,
-    "Gate Distance",
-    {
-        cv.Optional(CONF_SENSOR_ID) : cv.use_id(UltrasonicGarageSonar),
-        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,        
-    },
-)
-async def gate_distance_light_effect_to_code(config, effect_id):
-    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
-    if CONF_SENSOR_ID in config:
-        sonar_sensor = await cg.get_variable(config[CONF_SENSOR_ID])
-        cg.add(effect.set_sonar_sensor(sonar_sensor))
-    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
-    return effect
-CarDistanceLightEffect = ultrasonic_garage_ns.class_(
-    "CarDistanceLightEffect", AddressableLightEffect
-)
-@register_addressable_effect(
-    "car_distance",
-    GateDistanceLightEffect,
-    "Car Distance",
-    {
-        cv.Optional(CONF_SENSOR_ID) : cv.use_id(UltrasonicGarageSonar),
-        cv.Optional(CONF_EFFECT_MIRRORED, default=False) : cv.boolean,        
-    },
-)
-async def car_distance_light_effect_to_code(config, effect_id):
-    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])
-    if CONF_SENSOR_ID in config:
-        sonar_sensor = await cg.get_variable(config[CONF_SENSOR_ID])
-        cg.add(effect.set_sonar_sensor(sonar_sensor))
-    cg.add(effect.set_mirrored(config[CONF_EFFECT_MIRRORED]))
+@register_addressable_effect("scan_fast", ScanFastLightEffect, "Scan Fast", {})
+@register_addressable_effect("scan_fast_mirrored", ScanFastLightEffect, "Scan Fast Mirrored", {})
+@register_addressable_effect("scan_fast_reversed", ScanFastLightEffect, "Scan Fast Reversed", {})
+@register_addressable_effect("scan_fast_mirrored_reversed", ScanFastLightEffect, "Scan Fast Mirrored Reversed", {})
+@register_addressable_effect("fill_fast", FillFastLightEffect, "Fill Fast", {})
+@register_addressable_effect("fill_fast_mirrored", FillFastLightEffect, "Fill Fast Mirrored", {})
+@register_addressable_effect("fill_fast_reversed", FillFastLightEffect, "Fill Fast Reversed", {})
+@register_addressable_effect("fill_fast_mirrored_reversed", FillFastLightEffect, "Fill Fast Mirrored Reversed", {})
+@register_addressable_effect("distance_gate", DistanceGateLightEffect, "Distance gate", {})
+@register_addressable_effect("distance_gate_mirrored", DistanceGateLightEffect, "Distance gate Mirrored", {})
+@register_addressable_effect("distance_gate_reversed", DistanceGateLightEffect, "Distance gate Reversed", {})
+@register_addressable_effect("distance_gate_mirrored_reversed", DistanceGateLightEffect, "Distance gate Mirrored Reversed", {})
+@register_addressable_effect("distance_car", DistanceCarLightEffect, "Distance car", {})
+@register_addressable_effect("distance_car_mirrored", DistanceCarLightEffect, "Distance car Mirrored", {})
+@register_addressable_effect("distance_car_reversed", DistanceCarLightEffect, "Distance car Reversed", {})
+@register_addressable_effect("distance_car_mirrored_reversed", DistanceCarLightEffect, "Distance car Mirrored Reversed", {})
+async def ultrasonic_garage_light_effects_to_code(config, effect_id):
+    effect = cg.new_Pvariable(effect_id, config[CONF_NAME])    
+    if "MIRRORED" in config[CONF_NAME].upper():
+        cg.add(effect.set_mirrored(True))
+    if "REVERSED" in config[CONF_NAME].upper():
+        cg.add(effect.set_reversed(True))    
     return effect
 
 LIGHT_CONTROLLER_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(CONF_LIGHT_CONTROLLER_ID): cv.declare_id(UltrasonicGarageLightController),          
+        cv.GenerateID(CONF_LIGHT_CONTROLLER_ID): cv.declare_id(UltrasonicGarageLightController),    
         cv.Optional(CONF_LIGHT_CONTROLLER_OPENING): validate_automation(
             {
                 cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UltrasonicGarageLightControllerTrigger),
@@ -210,11 +182,20 @@ LIGHT_CONTROLLER_SCHEMA = cv.Schema(
             {
                 cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UltrasonicGarageLightControllerTrigger),
             }
-        ),                                        
+        ),
+        cv.Optional(CONF_EFFECTS, default=EXTRA_EFFECTS): validate_effects(ADDRESSABLE_EFFECTS),
     }
 )
 
-@register_action("set_light", LightControlAction, LIGHT_TURN_ON_ACTION_SCHEMA)
+SET_LIGHT_ACTION_SCHEMA = maybe_simple_id(LIGHT_CONTROL_ACTION_SCHEMA.extend(
+        {
+            cv.Optional(CONF_STATE, default=True): True,
+            cv.Optional(CONF_EFFECTS, default=EXTRA_EFFECTS): validate_effects(ADDRESSABLE_EFFECTS),
+        }
+    )
+)
+
+@register_action("set_light", LightControlAction, SET_LIGHT_ACTION_SCHEMA)
 async def set_light_to_code(config, action_id, template_arg, args):
     return await light_control_to_code(config, action_id, template_arg, args)
 
@@ -363,21 +344,38 @@ async def add_motion_sensor(motion_config):
 
     return motion_ptr
 
-async def add_light_controller(light_controller_config):
+async def add_light_controller(light_controller_config, sonar_gate, sonar_car):
     light_controller = cg.new_Pvariable(light_controller_config[CONF_LIGHT_CONTROLLER_ID])
+    light_states = []
     for action_type_config in light_controller_config:
-        if action_type_config == "light_control_id":
+        if action_type_config == "light_control_id" or action_type_config == "effects":
             continue
         action_type = str(action_type_config)        
-        for automation_config in light_controller_config.get(action_type_config, []):                
-            trigger = cg.new_Pvariable(automation_config[CONF_TRIGGER_ID])
-            await build_automation(trigger, [], automation_config)                
-            cg.add(light_controller.add_light_action(trigger, ACTION_TYPE[action_type.upper()]))
+        for automation_config in light_controller_config.get(action_type_config, []):                            
+            for light_state_config in automation_config[CONF_THEN]:                
+                if "set_light" in light_state_config:                    
+                    light_state = await cg.get_variable(light_state_config["set_light"][CONF_ID])
+                    if str(light_state) not in str(light_states):
+                        light_effects = await cg.build_registry_list(EFFECTS_REGISTRY, light_state_config["set_light"].get(CONF_EFFECTS, []))
+                        for light_effect in light_effects:
+                            if sonar_gate is not None and "ultrasonic_garage_distancegatelighteffect" in str(light_effect):
+                                cg.add(light_effect.set_sonar_sensor(sonar_gate))
+                            if sonar_car is not None and "ultrasonic_garage_distancecarlighteffect" in str(light_effect):
+                                cg.add(light_effect.set_sonar_sensor(sonar_car))                                
+                        cg.add(light_state.add_effects(light_effects)) 
+                        light_states.append(light_state)
+            light_trigger = cg.new_Pvariable(automation_config[CONF_TRIGGER_ID])
+            await build_automation(light_trigger, [], automation_config)
+            if light_states:
+                cg.add(light_controller.add_light_states(light_states))                
+            cg.add(light_controller.add_light_trigger(light_trigger, ACTION_TYPE[action_type.upper()]))
     return light_controller
 
-async def to_code(config):    
-    var = cg.new_Pvariable(config[CONF_ID])
-    await cg.register_component(var, config)
+async def to_code(config):
+    sonar_gate = None
+    sonar_car = None
+    var = cg.new_Pvariable(config[CONF_ID])    
+    await cg.register_component(var, config)    
     gate_config = config[CONF_GARAGE_GATE]
     gate = await add_gate(gate_config)
     cg.add(var.set_gate(gate))
@@ -399,5 +397,5 @@ async def to_code(config):
         cg.add(var.set_motion_sensor(motion_sensor))
     if CONF_GARAGE_LIGHT_CONTROLLER in config:
         light_controller_config = config[CONF_GARAGE_LIGHT_CONTROLLER]        
-        light_controller = await add_light_controller(light_controller_config)
+        light_controller = await add_light_controller(light_controller_config, sonar_gate, sonar_car)
         cg.add(var.set_light_controller(light_controller))    
