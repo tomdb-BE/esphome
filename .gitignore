@@ -132,3 +132,4 @@ sdkconfig.*
 .tests/
 
 /components
+testyaml/.gitignore
