@@ -1,0 +1,123 @@
+substitutions:
+  ha_name: Garage
+  ha_id: hadoga1
+  dev_name: hadoga1
+
+  dev_platform: ESP8266
+  dev_board: d1_mini
+
+  wifi_ssid: !secret wifi_name
+  wifi_pw: !secret wifi_password
+  wifi_fallback_pw: !secret wifi_fallback_password
+  wifi_dom: !secret wifi_domain
+  api_pw: !secret api_password
+  ota_pw: !secret ota_password
+esphome:
+  name: ${dev_name}
+
+esp8266:
+  board: ${dev_board}
+
+# WiFi connection
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_pw}
+  domain: ${wifi_dom}
+  fast_connect: true
+  ap:
+    ssid: ${dev_name}
+    password: ${wifi_fallback_pw}
+
+# Enable logging
+logger:
+  level: INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: ${api_pw}
+
+# Enable over-the-air updates
+ota:
+  password: ${ota_pw}
+
+# Enable Web server
+web_server:
+  port: 80
+
+external_components:
+  - source:
+      type: local
+      path: my_components
+
+ultrasonic_garage:
+  name: ${ha_name}
+  id: ${ha_id}
+  update_interval: 16ms
+  gate:
+    activate_pin: D2
+    trigger_time: 2s
+  gate_sensor:
+    pin: D4
+    inverted: True
+  gate_sonar:
+    trigger_pin: D0
+    echo_pin: D5
+  car_sonar:
+    trigger_pin: D8
+    echo_pin: D1
+  motion_sensor:    
+    pin: D7
+    min_on: 20s
+    min_off: 1s
+  light_control:
+    motion:
+    - set_light: 
+        id: part1   
+        effect: "Scan Fast Reversed"
+        blue: 1
+        red: 0
+        green: 0
+    - set_light: 
+        id: part2
+        effect: "Fill Fast"    
+    distance_gate:      
+    - set_light: 
+        id: part1   
+        effect: "Distance Gate"
+    distance_car:
+    - set_light: 
+        id: part2
+        effect: "Distance Car"          
+
+light:
+- platform: partition
+  id: part1
+  name: "Partition Light 1"
+  segments:
+  - id: ${ha_id}_neopixel_1
+    from: 0
+    to: 20
+  effects: addressable_rainbow
+- platform: partition
+  id: part2
+  name: "Partition Light 2"
+  segments:
+  - id: ${ha_id}_neopixel_1
+    from: 21
+    to: 40
+  effects: addressable_rainbow
+- platform: neopixelbus
+  name: test 1
+  id: ${ha_id}_neopixel_1
+  type: GRB
+  variant: WS2811
+  pin: D2
+  num_leds: 300    
+- platform: neopixelbus
+  name: test 2
+  id: ${ha_id}_neopixel_2
+  type: GRB
+  variant: WS2811
+  pin: D3
+  num_leds: 300

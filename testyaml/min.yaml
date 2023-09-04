@@ -1,0 +1,52 @@
+substitutions:
+  ha_name: Garage
+  ha_id: hadoga1
+  dev_name: hadoga1
+
+  dev_platform: ESP8266
+  dev_board: d1_mini
+
+  wifi_ssid: !secret wifi_name
+  wifi_pw: !secret wifi_password
+  wifi_fallback_pw: !secret wifi_fallback_password
+  wifi_dom: !secret wifi_domain
+  api_pw: !secret api_password
+  ota_pw: !secret ota_password
+
+  # Config values
+
+esphome:
+  name: ${dev_name}
+
+esp8266:
+  board: ${dev_board}
+
+# WiFi connection
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_pw}
+  domain: ${wifi_dom}
+  fast_connect: true
+  ap:
+    ssid: ${dev_name}
+    password: ${wifi_fallback_pw}
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: ${api_pw}
+
+# Enable over-the-air updates
+ota:
+  password: ${ota_pw}
+
+# Enable Web server
+web_server:
+  port: 80
+
+  # ---------------------------------------------------
+  
+  
