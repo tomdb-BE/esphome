@@ -15,9 +15,9 @@ void UltrasonicGarageGate::dump_config() {
   const char *const TAG = "ultrasonicgarage";
   LOG_COVER("  ", "Gate", this);
   LOG_PIN("    Activate Pin: ", activate_pin_);
-  ESP_LOGCONFIG(TAG, "    Min. position delta: %d%%", (uint8_t) (min_position_delta_ * 100));
-  ESP_LOGCONFIG(TAG, "    Trigger time: %dms", trigger_time_);
-  ESP_LOGCONFIG(TAG, "    Operation timeout: %ds", operation_timeout_ / 1000);
+  ESP_LOGCONFIG(TAG, "    Min. position delta: %d%%", (int) (min_position_delta_ * 100));
+  ESP_LOGCONFIG(TAG, "    Trigger time: %dms", (int) trigger_time_);
+  ESP_LOGCONFIG(TAG, "    Operation timeout: %ds", (int) (operation_timeout_ / 1000));
 }
 
 void UltrasonicGarageGate::update_gate(const uint32_t time_now) {
@@ -70,9 +70,9 @@ void UltrasonicGarageGate::handle_gate_trigger_(const uint32_t time_now) {
   if (!trigger_timer_) {    
     activate_pin_->digital_write(true);
     trigger_timer_ = time_now + trigger_time_;
-    ESP_LOGD(TAG, "Time NOW = %d", time_now);
-    ESP_LOGD(TAG, "Time NOW TRIGGER = %d", trigger_time_);    
-    ESP_LOGD(TAG, "Gate switch ON: timeout = %d", trigger_timer_);    
+    ESP_LOGD(TAG, "Time NOW = %d", (int) time_now);
+    ESP_LOGD(TAG, "Time NOW TRIGGER = %d", (int) trigger_time_);    
+    ESP_LOGD(TAG, "Gate switch ON: timeout = %d", (int) trigger_timer_);    
   }
   else if (time_now > trigger_timer_) {  
     trigger_gate_ = false;   

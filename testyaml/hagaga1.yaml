@@ -19,7 +19,9 @@ esp32:
   board: ${dev_board}
   framework:
     type: esp-idf
-    version: 5.1.1
+    platform_version: 6.4.0
+    version: 5.1.1    
+
 
 # WiFi connection
 wifi:
@@ -29,7 +31,7 @@ wifi:
   fast_connect: true
   ap:
     ssid: ${dev_name}
-    password: ${wifi_fallback_pw}
+    password: ${wifi_fallback_pw}cd
 
 # Enable logging
 logger:
@@ -110,19 +112,22 @@ light:
     from: 40
     to: 79
   effects: addressable_rainbow
-- platform: esp32_rmt_led_strip
+- platform: esp32_rmt_led_strip_v5
   id: ${ha_id}_neopixel_1
-  internal: True
-  rmt_channel: 3
+  name: ledstrip 1
+  internal: False
   rgb_order : GRB
   chipset: WS2812
-  pin: 21
-  num_leds: 300    
-- platform: esp32_rmt_led_strip  
-  id: ${ha_id}_neopixel_2
-  internal: True
-  rmt_channel: 4
-  rgb_order : GRB
-  chipset: WS2812
-  pin: 19
+  pin: GPIO21
   num_leds: 300
+  effects: addressable_rainbow  
+- platform: esp32_rmt_led_strip_v5
+  id: ${ha_id}_neopixel_2
+  name: ledstrip 2
+  internal: False
+  rgb_order : GRB
+  chipset: WS2812
+  pin: GPIO19
+  num_leds: 300
+  effects: addressable_rainbow
+

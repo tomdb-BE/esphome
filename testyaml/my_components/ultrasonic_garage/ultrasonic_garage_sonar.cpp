@@ -7,7 +7,7 @@ namespace ultrasonic_garage {
 
 static const char *const TAG = "ultrasonicgarage.sonar";
 
-void IRAM_ATTR interrupt_echo_callback(UltrasonicGarageSonar *sonar) { sonar->pulse_end_us = micros(); }
+void IRAM_ATTR interrupt_echo_callback(UltrasonicGarageSonar *sonar) { sonar->pulse_end_us = esp_timer_get_time(); }
 
 void UltrasonicGarageSonar::setup_sonar() {
   trigger_pin_->setup();
@@ -60,15 +60,15 @@ void UltrasonicGarageSonar::dump_config() {
   }
   LOG_PIN("    Echo Pin: ", echo_pin_);
   LOG_PIN("    Trigger Pin: ", trigger_pin_);
-  ESP_LOGCONFIG(TAG, "    Pulse time: %dµs", pulse_time_us_);
-  ESP_LOGCONFIG(TAG, "    Pulse Timeout: %dµs", timeout_us_);
-  ESP_LOGCONFIG(TAG, "    Distance Timeout: %dcs", timeout_cm_);
-  ESP_LOGCONFIG(TAG, "    Min. Distance: %dcm", min_distance_);
-  ESP_LOGCONFIG(TAG, "    Max. Distance: %dcm", max_distance_);
-  ESP_LOGCONFIG(TAG, "    Min. Change: %dcm", min_change_);
-  ESP_LOGCONFIG(TAG, "    Max. Errors: %d", max_errors_);
-  ESP_LOGCONFIG(TAG, "    Sleep timeout: %ds", sleep_timeout_);
-  ESP_LOGCONFIG(TAG, "    Sleep update interval: %ds", sleep_update_interval_);
+  ESP_LOGCONFIG(TAG, "    Pulse time: %dµs", (int) pulse_time_us_);
+  ESP_LOGCONFIG(TAG, "    Pulse Timeout: %dµs", (int) timeout_us_);
+  ESP_LOGCONFIG(TAG, "    Distance Timeout: %dcs", (int) timeout_cm_);
+  ESP_LOGCONFIG(TAG, "    Min. Distance: %dcm", (int) min_distance_);
+  ESP_LOGCONFIG(TAG, "    Max. Distance: %dcm", (int) max_distance_);
+  ESP_LOGCONFIG(TAG, "    Min. Change: %dcm", (int) min_change_);
+  ESP_LOGCONFIG(TAG, "    Max. Errors: %d", (int) max_errors_);
+  ESP_LOGCONFIG(TAG, "    Sleep timeout: %ds", (int) sleep_timeout_);
+  ESP_LOGCONFIG(TAG, "    Sleep update interval: %ds", (int) sleep_update_interval_);
 }
 
 void UltrasonicGarageSonar::send_trigger_pulse_() {

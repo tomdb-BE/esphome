@@ -3,6 +3,7 @@
 #include "esphome/core/gpio.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/core/log.h"
+#include <esp_timer.h>
 
 namespace esphome {
 namespace ultrasonic_garage {

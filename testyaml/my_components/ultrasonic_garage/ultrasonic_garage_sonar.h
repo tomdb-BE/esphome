@@ -2,6 +2,7 @@
 
 #include "esphome/core/gpio.h"
 #include "esphome/components/sensor/sensor.h"
+#include <esp_timer.h>
 
 #ifndef ULTRASONIC_US_TO_CM
 #define ULTRASONIC_US_TO_CM 57
