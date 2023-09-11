@@ -102,24 +102,25 @@ light:
   segments:
   - id: ${ha_id}_neopixel_1
     from: 0
-    to: 39
+    to: 19
   effects: addressable_rainbow
 - platform: partition
   id: part2
   name: "Partition Light 2"
   segments:
   - id: ${ha_id}_neopixel_1
-    from: 40
-    to: 79
+    from: 20
+    to: 39
   effects: addressable_rainbow
-- platform: esp32_rmt_led_strip_v5
+- platform: esp32_spi_led_strip_v5
   id: ${ha_id}_neopixel_1
   name: ledstrip 1
+  #max_refresh_rate: 100ms
   internal: False
   rgb_order : GRB
   chipset: WS2812
-  pin: GPIO21
-  num_leds: 300
+  pin: GPIO19
+  num_leds: 40
   effects: addressable_rainbow  
 - platform: esp32_rmt_led_strip_v5
   id: ${ha_id}_neopixel_2
@@ -127,7 +128,7 @@ light:
   internal: False
   rgb_order : GRB
   chipset: WS2812
-  pin: GPIO19
+  pin: GPIO21
   num_leds: 300
   effects: addressable_rainbow
 

@@ -1,7 +1,7 @@
 substitutions:
   ha_name: Garage
-  ha_id: hagaga1
-  dev_name: hagaga1
+  ha_id: hagaga1test
+  dev_name: hagaga1test
 
   dev_platform: ESP32
   dev_board: esp32doit-devkit-v1
@@ -17,6 +17,15 @@ esphome:
 
 esp32:
   board: ${dev_board}
+  framework:
+    type: esp-idf
+    platform_version: 6.4.0
+    version: 5.1.1    
+
+external_components:
+  - source:
+      type: local
+      path: my_components
 
 # WiFi connection
 wifi:
@@ -45,50 +54,21 @@ ota:
 web_server:
   port: 80
 
-switch:
-  - platform: gpio
-    pin: 13
-    name: gate switch
-    
-binary_sensor:
-- platform: gpio
-  pin: 27
-  name: motion
-- platform: gpio
-  pin: 17
-  name: gate operational
-  filters:
-    invert:
-
-sensor:
-  - platform: ultrasonic
-    trigger_pin: 33
-    echo_pin: 25
-    name: Sonar 1
-    timeout: 3m
-    update_interval: 2s
-    pulse_time: 5us
-  - platform: ultrasonic
-    trigger_pin: 32
-    echo_pin: 35
-    name: Sonar 2
-    timeout: 3m
-    update_interval: 2s
-    pulse_time: 5us
 
 light:    
-  - platform: fastled_clockless
-    id: ${ha_id}_neopixel_1
-    name: fastled 1
-    rgb_order : GRB
-    chipset: WS2812
-    pin: 19
-    num_leds: 30    
-  - platform: fastled_clockless
-    id: ${ha_id}_neopixel_2
-    name: fastled 2
-    rgb_order : GRB
-    chipset: WS2812
-    pin: 21
-    num_leds: 30
-  
+- platform: esp32_spi_led_strip_v5
+  id: ${ha_id}_neopixel_1
+  name: ledstrip 1
+  internal: False
+  rgb_order : GRB
+  chipset: WS2812
+  pin: GPIO19
+  num_leds: 150
+  effects: addressable_rainbow  
+  restore_mode: ALWAYS_ON
+  on_turn_on:
+  - light.turn_on:
+      id: ${ha_id}_neopixel_1
+      red: 0
+      green: 0
+      blue: 1
