@@ -141,7 +141,7 @@ void ESP32SPILEDStripLightOutput::write_state(light::LightState *state) {
 void ESP32SPILEDStripLightOutput::dump_config() {  
   ESP_LOGCONFIG(TAG, "ESP32 SPI LED Strip:");
   ESP_LOGCONFIG(TAG, "  Pin: %u", this->pin_);  
-  //ESP_LOGCONFIG(TAG, "  Channel: %d", this->channel_->channel_id);
+  ESP_LOGCONFIG(TAG, "  Channel: %d", this->spi_dma_channel_);
   const char *rgb_order;
   switch (this->rgb_order_) {
     case ORDER_RGB:

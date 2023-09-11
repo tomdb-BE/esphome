@@ -67,18 +67,18 @@ void DistanceGateLightEffect::apply(light::AddressableLight &it, const Color &cu
 
 
 void DistanceCarLightEffect::start_extra() {
-    if (! sonar_sensor_) {
+    if (! sonar_sensor_)
         stop();
-    }    
+    else this->segment_ = sonar_sensor_->get_effect_segment();
 }
 void DistanceCarLightEffect::apply(light::AddressableLight &it, const Color &current_color) {
     Color color = GREEN;
-    uint16_t distance = sonar_sensor_->distance_cm;    
-    if (distance == 0 || distance == sonar_sensor_->previous_distance_cm)
+    uint32_t distance = sonar_sensor_->get_distance_cm();    
+    if (distance == 0 || distance == sonar_sensor_->get_previous_distance_cm())
         return;
 
-    if (distance < sonar_sensor_->segment) {
-        distance = (distance << 8) / sonar_sensor_->segment;
+    if (distance < this->segment_) {
+        distance = (distance << 8) / this->segment_;
         color = Color(255 - distance, distance, 0, 0);
     }
     it.all() = color;  

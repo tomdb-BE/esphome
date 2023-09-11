@@ -53,6 +53,7 @@ class DistanceCarLightEffect : public UltrasonicGarageLightEffect {
   void apply(light::AddressableLight &it, const Color &current_color) override;
  protected:
   UltrasonicGarageSonar* sonar_sensor_ = nullptr;
+  uint32_t segment_ = 1;
 };
 
 } //namespace ultrasonic_garage
