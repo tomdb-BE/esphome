@@ -1,3 +1,4 @@
+#include <esp_timer.h>
 #include "ultrasonic_garage_gate.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
@@ -7,25 +8,30 @@ namespace ultrasonic_garage {
 
 static const char *const TAG = "ultrasonicgarage.gate";
 
-void UltrasonicGarageGate::setup_gate() {
+void UltrasonicGarageGate::setup_gate(float travel_distance) {
+  this->travel_distance_ = travel_distance;
   activate_pin_->setup();
 }
 
 void UltrasonicGarageGate::dump_config() {
   const char *const TAG = "ultrasonicgarage";
   LOG_COVER("  ", "Gate", this);
-  LOG_PIN("    Activate Pin: ", activate_pin_);
-  ESP_LOGCONFIG(TAG, "    Min. position delta: %d%%", (int) (min_position_delta_ * 100));
-  ESP_LOGCONFIG(TAG, "    Trigger time: %dms", (int) trigger_time_);
-  ESP_LOGCONFIG(TAG, "    Operation timeout: %ds", (int) (operation_timeout_ / 1000));
+  LOG_PIN("    Activate Pin: ", this->activate_pin_);
+  ESP_LOGCONFIG(TAG, "    Min. position delta: %d%%", (int) (this->min_position_delta_ * 100));
+  ESP_LOGCONFIG(TAG, "    Trigger time: %dms", (int) this->trigger_time_);
+  ESP_LOGCONFIG(TAG, "    Operation timeout: %ds", (int) (this->operation_timeout_ / 1000));
 }
 
-void UltrasonicGarageGate::update_gate(const uint32_t time_now) {
-  //ESP_LOGD(TAG, "Time NOW = %d", *time_now);
-  if (trigger_gate_)
-    handle_gate_trigger_(time_now);
-  if (current_operation != cover::COVER_OPERATION_CLOSING)
-    handle_gate_operation_(time_now);
+void UltrasonicGarageGate::update(float gate_distance) {
+  if (gate_distance >= 0.00f && fabs(gate_distance - this->position) > this->min_position_delta_) {    
+    this->position = 1.00f - (gate_distance / this->travel_distance_);
+    this->publish_state();
+    ESP_LOGD(TAG, "Postion: %f", this->position);
+  }
+  if (this->trigger_gate_)
+    this->handle_gate_trigger_();
+  if (this->current_operation != cover::COVER_OPERATION_CLOSING)
+    this->handle_gate_operation_();
 }
 
 cover::CoverTraits UltrasonicGarageGate::get_traits() {
@@ -37,85 +43,85 @@ cover::CoverTraits UltrasonicGarageGate::get_traits() {
   return traits;
 }
 
-void UltrasonicGarageGate::control(const cover::CoverCall &call) {
+void UltrasonicGarageGate::control(const cover::CoverCall &call) {  
   // This will be called every time the user requests a state change.  
   if (call.get_position().has_value()) {
     float pos = *call.get_position();
+    float current_position = this->position;
     ESP_LOGD(TAG, "Cover activated - Position: %f", pos);
     // If position change smaller than minimum percentage, do nothing.
-    if (fabs(pos - position) < min_position_delta_)
+    if (fabs(pos - current_position) < this->min_position_delta_)
       return;
-    if (pos > position) {
-      current_operation = cover::COVER_OPERATION_CLOSING;
+    if (pos > current_position) {
+      this->current_operation = cover::COVER_OPERATION_CLOSING;
     }
     else {
-      current_operation = cover::COVER_OPERATION_OPENING;
+      this->current_operation = cover::COVER_OPERATION_OPENING;
     }
-    operation_direction_ = current_operation;
-    trigger_gate_ = true;
-    // Publish new state    
-    position_delta = fabs(position - pos);
-    position = pos;    
-    publish_state();
+    this->operation_direction_ = current_operation;
+    this->trigger_gate_ = true;
+    // Publish new state        
+    this->position = pos;    
+    this->publish_state();
   }
   if (call.get_stop()) {
-    operation_direction_ = cover::COVER_OPERATION_IDLE;
-    trigger_gate_ = true;
+    this->operation_direction_ = cover::COVER_OPERATION_IDLE;
+    this->trigger_gate_ = true;
     // User requested cover stop
   }
 }
 
-void UltrasonicGarageGate::handle_gate_trigger_(const uint32_t time_now) {
-  //ESP_LOGD(TAG, "Time NOW FUNC = %d", *time_now);
-  if (!trigger_timer_) {    
-    activate_pin_->digital_write(true);
-    trigger_timer_ = time_now + trigger_time_;
+void UltrasonicGarageGate::handle_gate_trigger_() {
+  int64_t time_now = esp_timer_get_time();
+  if (!this->trigger_timer_) {    
+    this->activate_pin_->digital_write(true);
+    this->trigger_timer_ = time_now + this->trigger_time_;
     ESP_LOGD(TAG, "Time NOW = %d", (int) time_now);
-    ESP_LOGD(TAG, "Time NOW TRIGGER = %d", (int) trigger_time_);    
-    ESP_LOGD(TAG, "Gate switch ON: timeout = %d", (int) trigger_timer_);    
+    ESP_LOGD(TAG, "Time NOW TRIGGER = %d", (int) this->trigger_time_);    
+    ESP_LOGD(TAG, "Gate switch ON: timeout = %d", (int) this->trigger_timer_);    
   }
-  else if (time_now > trigger_timer_) {  
-    trigger_gate_ = false;   
-    trigger_timer_ = 0;
-    activate_pin_->digital_write(false);    
+  else if (time_now > this->trigger_timer_) {  
+    this->trigger_gate_ = false;   
+    this->trigger_timer_ = 0;
+    this->activate_pin_->digital_write(false);    
     ESP_LOGD(TAG, "Gate switch OFF");    
-    next_direction_ = handle_gate_direction_();    
+    this->next_direction_ = handle_gate_direction_(this->operation_direction_, this->next_direction_);
   }  
 }
 
-cover::CoverOperation UltrasonicGarageGate::handle_gate_direction_() {
-    if (operation_direction_ == cover::COVER_OPERATION_IDLE)
-      return (next_direction_ == cover::COVER_OPERATION_CLOSING) ? cover::COVER_OPERATION_OPENING : cover::COVER_OPERATION_CLOSING;
-    if (reverse_required_) {
+cover::CoverOperation UltrasonicGarageGate::handle_gate_direction_(cover::CoverOperation current_direction, cover::CoverOperation next_direction) {
+    if (current_direction == cover::COVER_OPERATION_IDLE)
+      return (next_direction == cover::COVER_OPERATION_CLOSING) ? cover::COVER_OPERATION_OPENING : cover::COVER_OPERATION_CLOSING;
+    if (this->reverse_required_) {
       ESP_LOGD(TAG, "Triggering the gate once more in the right direction after reversing");
-      reverse_required_ = false; 
-      trigger_gate_ = true;
-      return operation_direction_;      
+      this->reverse_required_ = false; 
+      this->trigger_gate_ = true;
+      return current_direction;
     }
-    if (operation_direction_ != next_direction_) {
+    if (current_direction != next_direction) {
       ESP_LOGD(TAG, "Stopping gate to reverse direction");
-      reverse_required_ = true;
-      trigger_gate_ = true;
-      return next_direction_;
+      this->reverse_required_ = true;
+      this->trigger_gate_ = true;
+      return next_direction;
     }
     else {      
       ESP_LOGD(TAG, "Gate action completed, gate trigger OFF");
-      reverse_required_ = false; 
-      return (operation_direction_ == cover::COVER_OPERATION_CLOSING) ? cover::COVER_OPERATION_OPENING : cover::COVER_OPERATION_CLOSING;
+      this->reverse_required_ = false; 
+      return (current_direction == cover::COVER_OPERATION_CLOSING) ? cover::COVER_OPERATION_OPENING : cover::COVER_OPERATION_CLOSING;
     }
 }
 
-void UltrasonicGarageGate::handle_gate_operation_(const uint32_t time_now) {
-  if (!operation_timer_) {
-    operation_timer_ = time_now + operation_timeout_;
-    ESP_LOGD(TAG, "Gate operation timer started");
+void UltrasonicGarageGate::handle_gate_operation_() {
+  int64_t time_now = esp_timer_get_time();
+  if (!this->operation_timer_) {
+    this->operation_timer_ = time_now + this->operation_timeout_;
+    // ESP_LOGD(TAG, "Gate operation timer started");
   }  
-  else if (time_now > operation_timer_) {
-    operation_timer_ = 0;
-    ESP_LOGD(TAG, "Gate operation timeout");
+  else if (esp_timer_get_time() > this->operation_timer_) {
+    this->operation_timer_ = 0;
+    // ESP_LOGD(TAG, "Gate operation timeout");
   }  
 }
-
 
 } //namespace ultrasonic_garage
 } //namespace esphome

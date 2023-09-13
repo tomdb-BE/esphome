@@ -11,8 +11,8 @@ namespace ultrasonic_garage {
 class UltrasonicGarageLightEffect : public light::AddressableLightEffect {
  public:
   UltrasonicGarageLightEffect(const std::string &name) : AddressableLightEffect(name) {};
-  void set_mirrored(bool mirrored) { mirrored_ = mirrored; }
-  void set_reversed(bool reversed) { reversed_ = reversed; }
+  void set_mirrored(bool mirrored) { this->mirrored_ = mirrored; }
+  void set_reversed(bool reversed) { this->reversed_ = reversed; }
   virtual void start_extra() {}
   virtual void start();  
  protected:
@@ -38,21 +38,23 @@ class FillFastLightEffect : public UltrasonicGarageLightEffect {
 class DistanceGateLightEffect : public UltrasonicGarageLightEffect {
  public:
   DistanceGateLightEffect(const std::string &name) : UltrasonicGarageLightEffect(name) {};
-  void set_gate(UltrasonicGarageGate* gate) { gate_ = gate; }
+  void set_gate(UltrasonicGarageGate* gate) { this->gate_ = gate; }
   void start_extra() override;
   void apply(light::AddressableLight &it, const Color &current_color) override;
  protected:
-  UltrasonicGarageGate* gate_ = nullptr;  
+  UltrasonicGarageGate* gate_{nullptr};
+  float previous_position_ = 0.00f;
 };
 
 class DistanceCarLightEffect : public UltrasonicGarageLightEffect {
  public:
   DistanceCarLightEffect(const std::string &name) : UltrasonicGarageLightEffect(name) {};  
-  void set_sonar_sensor(UltrasonicGarageSonar* sonar_sensor) { sonar_sensor_ = sonar_sensor; }
+  void set_sonar_sensor(UltrasonicGarageSonar* sonar_sensor) { this->sonar_sensor_ = sonar_sensor; }
   void start_extra() override;
   void apply(light::AddressableLight &it, const Color &current_color) override;
  protected:
-  UltrasonicGarageSonar* sonar_sensor_ = nullptr;
+  UltrasonicGarageSonar* sonar_sensor_{nullptr};
+  uint32_t previous_distance_ = 0;
   uint32_t segment_ = 1;
 };
 

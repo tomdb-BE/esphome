@@ -50,16 +50,22 @@ void FillFastLightEffect::apply(light::AddressableLight &it, const Color &curren
 }
 
 void DistanceGateLightEffect::start_extra() {
-    if (!gate_)       
+    if (!this->gate_)       
         stop();
+    this->previous_position_ = 0.00f;
 }
 void DistanceGateLightEffect::apply(light::AddressableLight &it, const Color &current_color) {
     Color color = GREEN;
     uint8_t color_diff;
-    if (gate_->position > 0.00f) {
-        gate_->position_delta = 0.00f;
-        color_diff = gate_->position * 128.00f;
-        color = Color(255 - color_diff, color_diff, 0, 0);
+    float current_position = this->gate_->position;
+
+    if (current_position == this->previous_position_)
+      return;
+
+    this->previous_position_ = current_position;    
+    if (current_position > 0.00f) {        
+        color_diff = current_position * 255.00f;
+        color = Color(color_diff, 255 - color_diff, 0, 0);
     }
     it.all() = color; 
     it.schedule_show();
@@ -67,18 +73,20 @@ void DistanceGateLightEffect::apply(light::AddressableLight &it, const Color &cu
 
 
 void DistanceCarLightEffect::start_extra() {
-    if (! sonar_sensor_)
+    if (!this->sonar_sensor_)
         stop();
-    else this->segment_ = sonar_sensor_->get_effect_segment();
+    else this->segment_ = this->sonar_sensor_->get_effect_segment();
+    this->previous_distance_ = 0;
 }
 void DistanceCarLightEffect::apply(light::AddressableLight &it, const Color &current_color) {
     Color color = GREEN;
-    uint32_t distance = sonar_sensor_->get_distance_cm();    
-    if (distance == 0 || distance == sonar_sensor_->get_previous_distance_cm())
+    uint32_t distance = this->sonar_sensor_->get_distance_cm();
+    uint32_t segment = this->segment_;
+    if (distance == 0 || distance == this->previous_distance_)
         return;
 
-    if (distance < this->segment_) {
-        distance = (distance << 8) / this->segment_;
+    if (distance < segment) {
+        distance = (distance << 8) / segment;
         color = Color(255 - distance, distance, 0, 0);
     }
     it.all() = color;  

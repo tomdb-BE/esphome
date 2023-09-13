@@ -28,10 +28,10 @@ class UltrasonicGarage : public PollingComponent {
   UltrasonicGarageMotion *gate_sensor_;
   UltrasonicGarageMotion *motion_sensor_;
   UltrasonicGarageLightController *light_controller_;
-  uint32_t sonar_gate_interval_us_ = 200 * 1000;
-  uint32_t sonar_car_interval_us_ = 200 * 1000;
-  uint32_t sonar_gate_timer_us_ = 0;
-  uint32_t sonar_car_timer_us_ = 0;
+  int64_t sonar_gate_interval_us_ = 0;
+  int64_t sonar_car_interval_us_ = 0;
+  int64_t sonar_timer_us_ = 0;
+  bool update_sonar_type_ = 0;
 };
 
 } //namespace ultrasonic_garage

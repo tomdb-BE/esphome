@@ -55,6 +55,7 @@ CONF_SONAR_MIN_DISTANCE = "min_distance"
 CONF_SONAR_MAX_DISTANCE = "max_distance"
 CONF_SONAR_TIMEOUT_DISTANCE = "timeout"
 CONF_SONAR_MIN_CHANGE = "min_change"
+CONF_SONAR_MIN_UPDATE_INTERVAL = "min_update_interval"
 CONF_SONAR_SLEEP_UPDATE_INTERVAL = "sleep_update_interval"
 CONF_SONAR_SLEEP_TIMEOUT = "sleep"
 CONF_SONAR_PULSE_TIME = "pulse_time"
@@ -234,10 +235,11 @@ SONAR_SCHEMA = (sensor.sensor_schema(
             cv.Optional(CONF_SONAR_MAX_DISTANCE, default="200cm"): cv.All(cv.distance, cv.float_range(max=650)), 
             cv.Optional(CONF_SONAR_TIMEOUT_DISTANCE, default="300cm"): cv.All(cv.distance, cv.float_range(max=650)),
             cv.Optional(CONF_SONAR_MIN_CHANGE, default="2cm"): cv.All(cv.distance, cv.float_range(max=650)),
-            cv.Optional(CONF_SONAR_SLEEP_UPDATE_INTERVAL, default="60s"):  cv.All(cv.positive_time_period_microseconds, cv.Range(min=cv.TimePeriod(seconds=60))),            
+            cv.Optional(CONF_SONAR_MIN_UPDATE_INTERVAL, default="0s"): cv.All(cv.positive_time_period_microseconds, cv.Range(max=cv.TimePeriod(microseconds=1000))),
+            cv.Optional(CONF_SONAR_SLEEP_UPDATE_INTERVAL, default="60s"):  cv.All(cv.positive_time_period_microseconds, cv.Range(min=cv.TimePeriod(seconds=10))),            
             cv.Optional(CONF_SONAR_SLEEP_TIMEOUT, default="2min"): cv.All(cv.positive_time_period_microseconds, cv.Range(min=cv.TimePeriod(seconds=120))),
             cv.Optional(CONF_SONAR_PULSE_TIME, default="10us"): cv.All(cv.positive_time_period_microseconds, cv.Range(max=cv.TimePeriod(microseconds=1000))),
-            cv.Optional(CONF_SONAR_MAX_ERRORS, default=0): cv.positive_int,
+            cv.Optional(CONF_SONAR_MAX_ERRORS, default=0): cv.positive_int,            
         }
     )    
 )
@@ -324,6 +326,7 @@ async def add_sonar(sonar_config, is_car_sonar = False):
     cg.add(sonar_ptr.set_max_distance(sonar_config[CONF_SONAR_MAX_DISTANCE] * 100))
     cg.add(sonar_ptr.set_timeout_distance(sonar_config[CONF_SONAR_TIMEOUT_DISTANCE] * 100))
     cg.add(sonar_ptr.set_min_change(sonar_config[CONF_SONAR_MIN_CHANGE] * 100))
+    cg.add(sonar_ptr.set_min_update_interval(sonar_config[CONF_SONAR_MIN_UPDATE_INTERVAL]))
     cg.add(sonar_ptr.set_sleep_update_interval(sonar_config[CONF_SONAR_SLEEP_UPDATE_INTERVAL]))
     cg.add(sonar_ptr.set_sleep_timeout(sonar_config[CONF_SONAR_SLEEP_TIMEOUT]))
     cg.add(sonar_ptr.set_pulse_time_us(sonar_config[CONF_SONAR_PULSE_TIME]))

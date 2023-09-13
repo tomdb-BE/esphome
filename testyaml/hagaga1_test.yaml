@@ -19,8 +19,6 @@ esp32:
   board: ${dev_board}
   framework:
     type: esp-idf
-    platform_version: 6.4.0
-    version: 5.1.1    
 
 external_components:
   - source:
@@ -56,7 +54,7 @@ web_server:
 
 
 light:    
-- platform: esp32_spi_led_strip_v5
+- platform: esp32_spi_led_strip
   id: ${ha_id}_neopixel_1
   name: ledstrip 1
   internal: False

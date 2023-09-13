@@ -68,9 +68,12 @@ ultrasonic_garage:
   gate_sonar:
     trigger_pin: 33
     echo_pin: 25
+    max_distance: 100cm
+    sleep_update_interval: 10s
   car_sonar:
     trigger_pin: 32
     echo_pin: 35
+    sleep_update_interval: 10s
   motion_sensor:    
     pin: 27
     min_on: 2s
@@ -112,17 +115,16 @@ light:
     from: 20
     to: 39
   effects: addressable_rainbow
-- platform: esp32_spi_led_strip_v5
+- platform: esp32_spi_led_strip
   id: ${ha_id}_neopixel_1
   name: ledstrip 1
-  #max_refresh_rate: 100ms
   internal: False
   rgb_order : GRB
   chipset: WS2812
   pin: GPIO19
   num_leds: 40
   effects: addressable_rainbow  
-- platform: esp32_rmt_led_strip_v5
+- platform: esp32_spi_led_strip
   id: ${ha_id}_neopixel_2
   name: ledstrip 2
   internal: False
