@@ -42,40 +42,45 @@ void UltrasonicGarage::setup() {
 }
 
 void UltrasonicGarage::update() {
+  UltrasonicGarageSonar* sonar_gate = this->sonar_gate_;
+  UltrasonicGarageSonar* sonar_car = this->sonar_car_;
+  bool update_sonar_type = this->update_sonar_type_;
+  bool motion_detected = false;
+  bool gate_moving = false;
+  uint8_t cover_operation;
   const int64_t  time_now = esp_timer_get_time();
   int32_t sonar_gate_relative_distance = -1;
 
-  if (this->motion_sensor_)
-    this->motion_sensor_->update_sensor();
+  if (this->gate_sensor_ && this->motion_sensor_->is_enabled())
+    gate_moving = this->gate_sensor_->update();
 
-  if (this->gate_sensor_)
-    this->gate_sensor_->update_sensor();
+  if (this->motion_sensor_ && this->motion_sensor_->is_enabled())
+    motion_detected = this->motion_sensor_->update();
 
   if (time_now > this->sonar_timer_us_) {   
-    if (this->sonar_gate_ && this->sonar_gate_->is_enabled() && this->update_sonar_type_ == 0) {
+    if (sonar_gate && sonar_gate->is_enabled() && update_sonar_type == 0) {
+      if (gate_moving)
+        sonar_gate->set_sleep_mode(false);
       this->sonar_timer_us_ = time_now + this->sonar_gate_interval_us_;
-      this->sonar_gate_->update();
-      sonar_gate_relative_distance = sonar_gate_->get_relative_distance_cm();
-      this->update_sonar_type_ = (this->sonar_car_ && this->sonar_car_->is_enabled()) ? 1 : 0;
+      sonar_gate->update();
+      sonar_gate_relative_distance = sonar_gate->get_relative_distance_cm();
+      this->update_sonar_type_ = (sonar_car && sonar_car->is_enabled()) ? 1 : 0;
     }
-    else if (this->sonar_car_ && this->sonar_car_->is_enabled() && this->update_sonar_type_ == 1) {
+    else if (sonar_car && sonar_car->is_enabled() && update_sonar_type == 1) {
+      if (motion_detected)
+        sonar_car->set_sleep_mode(false);      
       this->sonar_timer_us_ = time_now + this->sonar_car_interval_us_;
-      this->sonar_car_->update();
-      this->update_sonar_type_ = (this->sonar_gate_ && this->sonar_gate_->is_enabled()) ? 0 : 1;
+      sonar_car->update();
+      this->update_sonar_type_ = (sonar_gate && sonar_gate->is_enabled()) ? 0 : 1;
     }
   }
 
   if (this->gate_)      
-      this->gate_->update(sonar_gate_relative_distance);
+      cover_operation = this->gate_->update(sonar_gate_relative_distance);
 
-  /*
-  if (this->sonar_car_ && time_now > this->sonar_car_timer_us_) {
-    if (!this->sonar_gate_ || !this->sonar_gate_->is_scanning())
-      sonar_distance = this->sonar_car_->update();
-    this->sonar_car_timer_us_ = time_now + this->sonar_car_interval_us_;
+  if (this->light_controller_) {
+
   }
-  if (this->light_controller_) {}
-  */
 }
 
 void UltrasonicGarage::dump_config() {

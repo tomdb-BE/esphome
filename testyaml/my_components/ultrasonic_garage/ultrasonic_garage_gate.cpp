@@ -22,7 +22,7 @@ void UltrasonicGarageGate::dump_config() {
   ESP_LOGCONFIG(TAG, "    Operation timeout: %ds", (int) (this->operation_timeout_ / 1000));
 }
 
-void UltrasonicGarageGate::update(float gate_distance) {
+uint8_t UltrasonicGarageGate::update(float gate_distance) {
   if (gate_distance >= 0.00f && fabs(gate_distance - this->position) > this->min_position_delta_) {    
     this->position = 1.00f - (gate_distance / this->travel_distance_);
     this->publish_state();
@@ -32,6 +32,7 @@ void UltrasonicGarageGate::update(float gate_distance) {
     this->handle_gate_trigger_();
   if (this->current_operation != cover::COVER_OPERATION_CLOSING)
     this->handle_gate_operation_();
+  return (uint8_t) this->current_operation;
 }
 
 cover::CoverTraits UltrasonicGarageGate::get_traits() {

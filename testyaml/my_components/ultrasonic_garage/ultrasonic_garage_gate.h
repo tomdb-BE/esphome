@@ -24,7 +24,7 @@ class UltrasonicGarageGate : public cover::Cover {
   cover::CoverTraits get_traits() override;
   void control(const cover::CoverCall &call) override;  
   void setup_gate(float travel_distance);
-  void update(float gate_distance);  
+  uint8_t update(float gate_distance);  
  protected:
   void handle_gate_trigger_();
   cover::CoverOperation handle_gate_direction_(cover::CoverOperation current_direction, cover::CoverOperation next_direction);

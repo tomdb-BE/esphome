@@ -7,30 +7,9 @@ namespace ultrasonic_garage {
 
 static const char *const TAG = "ultrasonicgarage.motion";
 
-void IRAM_ATTR motion_sensor_timer_callback (void* arg) { 
-  UltrasonicGarageMotion *motion_sensor = (UltrasonicGarageMotion*) (arg); 
-  motion_sensor->set_sleeping(false);
-}
-
-void UltrasonicGarageMotion::setup_motion_sensor() {
+void UltrasonicGarageMotion::setup() {
   this->motion_pin_->setup();
-  const esp_timer_create_args_t motion_sensor_timer_args = {          
-          .callback = &motion_sensor_timer_callback,
-          .arg = (void*) this,
-          .dispatch_method = ESP_TIMER_TASK,
-          .name = "motion_sensor_timer",
-          .skip_unhandled_events = false          
-  };  
-  if (esp_timer_create(&motion_sensor_timer_args, &this->motion_sensor_timer_) != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to initialize motion sensor timer!");
-    this->mark_failed();
-    return;
-  };
-  if (esp_timer_start_periodic(this->motion_sensor_timer_, this->min_on_) != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to start motion sensor timer!");
-    this->mark_failed();
-    return;
-  };  
+  this->enabled_ = true;
 }
 
 void UltrasonicGarageMotion::dump_config() {
@@ -42,31 +21,30 @@ void UltrasonicGarageMotion::dump_config() {
   ESP_LOGCONFIG(TAG, "    Minimum OFF time: %ds", (int) this->min_off_ / 1000 / 1000);
 }
 
-void UltrasonicGarageMotion::update_sensor() { 
-  if (!this->sleeping_)
-    ESP_LOGD(TAG, "NOT Sleeping");
+bool UltrasonicGarageMotion::update() {
+  int64_t time_now = esp_timer_get_time();
+  int64_t new_state_timer = this->new_state_timer_;
+  bool measurement = motion_pin_->digital_read() ^ this->inverted_;
+  bool previous_measurement = this->previous_measurement_;
+  int64_t min_period = (measurement) ? this->min_on_ : this->min_off_;
 
-  if (this->detection_disabled_ || this->sleeping_)
-    return;
-  
-  bool sensor_active = motion_pin_->digital_read();
+  if (measurement == previous_measurement) {
+    if (new_state_timer && time_now > new_state_timer) {
+      this->new_state_timer_ = 0;
+      this->last_period_ = time_now;
+      publish_state(measurement);
+    }       
+  }
+  else if (min_period) {
+    this->new_state_timer_ = time_now + min_period;
+    this->previous_measurement_ = measurement;  
+    measurement = previous_measurement;
+  }
+  else {
+    publish_state(measurement);
+  }
 
-  if (this->inverted_)
-    sensor_active = !sensor_active;
-
-  if (sensor_active)
-    ESP_LOGD(TAG, "ACTIVE");
-  else
-    ESP_LOGD(TAG, "NOT ACTIVE");
-
-  this->sleeping_ = true;
-
-  if (sensor_active)
-    esp_timer_restart(this->motion_sensor_timer_, min_off_);
-  else esp_timer_restart(this->motion_sensor_timer_, min_on_);
-
-  publish_state(sensor_active);
-
+  return measurement;
 }
 
 } //namespace ultrasonic_garage

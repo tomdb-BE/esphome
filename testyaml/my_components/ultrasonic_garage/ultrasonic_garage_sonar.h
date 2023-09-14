@@ -27,8 +27,8 @@ class UltrasonicGarageSonar : public sensor::Sensor, public Component {
   void set_min_update_interval(uint32_t min_update_interval) { this->min_update_interval_ = min_update_interval; }
   void set_pulse_start_us() { this->pulse_start_us_ = esp_timer_get_time(); }   
   void set_pulse_end_us() { this->pulse_end_us_ = esp_timer_get_time(); }
-  void set_sleep_mode(bool sleep_enabled) { this->sleep_mode_ = sleep_enabled; }
-  void set_sonar_enabled(bool active_state = true) { this->enabled_ = active_state; }
+  void set_sleep_mode(bool sleep_enabled = true) { this->sleep_mode_ = sleep_enabled; }
+  void set_sonar_enabled(bool sonar_enabled = true) { this->enabled_ = sonar_enabled; }
   bool read_echo_pin() { return this->echo_pin_->digital_read(); }
   bool get_pulse_started() { return (this->pulse_start_us_ > 0); }
   uint32_t get_distance_cm() { return this->distance_cm_; }

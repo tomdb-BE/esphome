@@ -29,9 +29,9 @@ class UltrasonicGarageLightController {
  public:
   UltrasonicGarageLightController () {}
   ~UltrasonicGarageLightController () {}  
-  void add_light_states(std::vector<light::LightState*> light_states) { light_states_ = light_states; }
-  void turn_on_all() { for (auto light_state : light_states_) light_state->turn_on(); }
-  void turn_off_all() { for (auto light_state : light_states_) light_state->turn_off(); }
+  void add_light_states(std::vector<light::LightState*> light_states) { this->light_states_ = light_states; }
+  void turn_on_all() { for (auto light_state : this->light_states_) light_state->turn_on(); }
+  void turn_off_all() { for (auto light_state : this->light_states_) light_state->turn_off(); }
   void setup();  
   void add_light_trigger(UltrasonicGarageLightControllerTrigger* light_trigger, UltrasonicGarageActionType action_type);
   void activate_triggers(UltrasonicGarageActionType action_type);  
