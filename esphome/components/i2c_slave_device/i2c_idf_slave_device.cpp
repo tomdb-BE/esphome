@@ -649,11 +649,11 @@ void I2CIDFSlaveDevice::dump_config() {
   ESP_LOGCONFIG(TAG, "  Address: 0x%02x", this->address_);
   ESP_LOGCONFIG(TAG, "  Rx Buffer: %d commands, %d bytes", this->rx_buffer_size_);
   ESP_LOGCONFIG(TAG, "  Tx Buffer: %d bytes", this->tx_buffer_size_);
-  ESP_LOGCONFIG(TAG, "  Prefix   : %s", prefix_string);
+  ESP_LOGCONFIG(TAG, "  Prefix   : %s", prefix_string.c_str());
   ESP_LOGCONFIG(TAG, "  ---  Command format - size: %d  --- ", this->command_size_);
-  ESP_LOGCONFIG(TAG, "  Format ALL : %s <targetID> <action>", prefix_string);
-  ESP_LOGCONFIG(TAG, "  Format GET : %s <targetID> <action> <property>", prefix_string);
-  ESP_LOGCONFIG(TAG, "  Format SET : %s <targetID> <action> <property> <value>", prefix_string);
+  ESP_LOGCONFIG(TAG, "  Format ALL : %s <targetID> <action>", prefix_string.c_str());
+  ESP_LOGCONFIG(TAG, "  Format GET : %s <targetID> <action> <property>", prefix_string.c_str());
+  ESP_LOGCONFIG(TAG, "  Format SET : %s <targetID> <action> <property> <value>", prefix_string.c_str());
   ESP_LOGCONFIG(TAG, "  --- Target IDs --- ");
   for (const auto &[target_id, action] : this->actions_)
     ESP_LOGCONFIG(TAG, "  0x%02x   : %s", target_id, action->target_name.c_str());
