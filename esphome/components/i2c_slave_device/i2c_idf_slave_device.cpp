@@ -1,5 +1,5 @@
-#include "i2c_idf_slave_device.h"
 
+#include "i2c_idf_slave_device.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
@@ -46,30 +46,31 @@ static std::string get_hex_string(const uint8_t *byte_array, const size_t size) 
   return hex_string;
 }
 
-#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 // CALL BACKS
 
-// Call back on receive data from mastyer
-bool I2CIDFSlaveDevice::i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave,
-                                              const i2c_slave_rx_done_event_data_t *rx_event_data, void *arg) {
-  ESP_LOGI(TAG, "Data received callback triggered");
-  // i2c_slave_event_t evt = I2C_SLAVE_EVT_RX;
-  // BaseType_t xTaskWoken = 0;
-  I2CIDFSlaveDevice *slave_device = (I2CIDFSlaveDevice *) arg;
-  if (slave_device)
-    slave_device->handle_rx_event(rx_event_data);
-  // xQueueSendFromISR(context->event_queue, &evt, &xTaskWoken);
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+
+bool I2CIDFSlaveDevice::i2c_slave_request_callback(i2c_slave_dev_handle_t i2c_slave,
+                                                   const i2c_slave_request_event_data_t *evt_data, void *arg) {
+  uint32_t write_len;
+  const uint8_t data_zero = 0x00;
+  esp_err_t err = i2c_slave_write(i2c_slave, &data_zero, 1, &write_len, 0);
   return 0;
 }
 
-void I2CIDFSlaveDevice::handle_rx_event(const i2c_slave_rx_done_event_data_t *rx_buffer) {
-  if (!rx_buffer)
-    return;
+bool I2CIDFSlaveDevice::i2c_slave_receive_callback(i2c_slave_dev_handle_t i2c_slave,
+                                                   const i2c_slave_rx_done_event_data_t *evt_data, void *arg) {
+  if (!evt_data)
+    return 0;
 
-  uint32_t max_size = (rx_buffer->length < this->data_received_size_) ? rx_buffer->length : this->data_received_size_;
+  I2CIDFSlaveDevice *slave_dev = (I2CIDFSlaveDevice *) arg;
+  uint32_t max_size =
+      (evt_data->length < slave_dev->data_received_size_) ? evt_data->length : slave_dev->data_received_size_;
 
   for (int i = 0; i < max_size; i++)
-    this->data_received_[i] = rx_buffer->buffer[i];
+    slave_dev->data_received_[i] = evt_data->buffer[i];
+
+  return 0;
 }
 
 #endif
@@ -103,41 +104,39 @@ void I2CIDFSlaveDevice::setup() {
     return;
   }
 
-// Set the i2c driver config and start it
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 
-  uint32_t internal_pullup = (this->pullup_) ? 1 : 0;
-  i2c_slave_config_t i2c_slave_config = {
-      .i2c_port = this->i2c_slave_port_,
-      .sda_io_num = this->sda_pin_,
-      .scl_io_num = this->scl_pin_,
-      .clk_source = I2C_CLK_SRC_DEFAULT,
-      .send_buf_depth = 100,
-      .receive_buf_depth = 100,
-      .slave_addr = this->address_,
-      .addr_bit_len = I2C_ADDR_BIT_LEN_7,
-      .intr_priority = 0,
-      .flags =
-          {
-              .allow_pd = 1,
-              .enable_internal_pullup = internal_pullup,
-          },
-  };
-
-  // Register the i2c slave device
-  err = i2c_new_slave_device(&i2c_slave_config, &this->i2c_slave_dev_handle_);
-
-  // Assign the callback function on receive and send
-  i2c_slave_event_callbacks_t i2c_slave_callbacks = {
-      .on_receive = i2c_slave_rx_callback,
-  };
-  err = i2c_slave_register_event_callbacks(this->i2c_slave_dev_handle_, &i2c_slave_callbacks, this);
-
-  // Set the update interval to 'never' as we will use callbacks in driver v2
+  // Set the update interval to 'never' as updates will rely on interrupt callback when using v2 driver
   this->set_update_interval(SCHEDULER_DONT_RUN);
 
-#else
+  // Set the I2C slave driver v2 config
+  i2c_slave_config_t i2c_slave_config{};
+  memset(&i2c_slave_config, 0, sizeof(i2c_slave_config));
+  i2c_slave_config.i2c_port = this->i2c_slave_port_;
+  i2c_slave_config.clk_source = I2C_CLK_SRC_DEFAULT;
+  i2c_slave_config.sda_io_num = this->sda_pin_;
+  i2c_slave_config.scl_io_num = this->scl_pin_;
+  i2c_slave_config.send_buf_depth = internal_tx_buffer_size;
+  i2c_slave_config.receive_buf_depth = internal_rx_buffer_size;
+  i2c_slave_config.slave_addr = this->address_;
+  i2c_slave_config.flags.enable_internal_pullup = this->pullup_;
 
+  // Install the I2C slave driver v2
+  err = i2c_new_slave_device(&i2c_slave_config, &this->i2c_slave_dev_handle_);
+
+  if (err == ESP_OK) {
+    // Assign the callback functions
+    i2c_slave_event_callbacks_t i2c_slave_event_callbacks{};
+    memset(&i2c_slave_event_callbacks, 0, sizeof(i2c_slave_event_callbacks));
+    i2c_slave_event_callbacks.on_request = i2c_slave_request_callback;
+    i2c_slave_event_callbacks.on_receive = i2c_slave_receive_callback;
+
+    err = i2c_slave_register_event_callbacks(this->i2c_slave_dev_handle_, &i2c_slave_event_callbacks, this);
+  }
+
+#else  // !CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+
+  // Define the I2C slave driver v1 config
   i2c_config_t i2c_slave_config{};
   memset(&i2c_slave_config, 0, sizeof(i2c_slave_config));
   i2c_slave_config.mode = I2C_MODE_SLAVE;
@@ -146,31 +145,32 @@ void I2CIDFSlaveDevice::setup() {
   i2c_slave_config.sda_pullup_en = this->pullup_;
   i2c_slave_config.scl_pullup_en = this->pullup_;
   i2c_slave_config.slave.slave_addr = this->address_;
+#ifdef USE_ESP32_VARIANT_ESP32S2
+  // workaround for https://github.com/esphome/issues/issues/6718
+  i2c_slave_config.clk_flags = I2C_SCLK_SRC_FLAG_AWARE_DFS;
+#endif  // USE_ESP32_VARIANT_ESP32S2
 
+  // Apply the I2C slave driver v1 config
   err = i2c_param_config(this->i2c_slave_port_, &i2c_slave_config);
+  // Install the I2C slave driver v1
+  if (err == ESP_OK)
+    err =
+        i2c_driver_install(this->i2c_slave_port_, I2C_MODE_SLAVE, internal_rx_buffer_size, internal_tx_buffer_size, 0);
+
+#endif  // CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to configure I2C slave on port %d. Error: %d", i2c_slave_port_, err);
-    mark_failed();
-    return;
-  }
-
-  err = i2c_driver_install(this->i2c_slave_port_, I2C_MODE_SLAVE, internal_rx_buffer_size, internal_tx_buffer_size, 0);
-
-#endif
-
-  if (err != ESP_OK) {
+    // Fail the component if the I2C slave drive installation returned errors
     ESP_LOGE(TAG, "Failed to install I2C slave driver. Error: %d", err);
     mark_failed();
-    return;
+  } else {
+    // Allocate local read and write buffers
+    initialize_byte_buffer(this->data_received_, this->data_received_size_);
+    initialize_byte_buffer(this->data_sent_, this->data_sent_size_);
+
+    ESP_LOGI(TAG, "I2C Slave ready to receive on address 0x%02x", this->address_);
+    ready_ = true;
   }
-
-  // Allocate buffers
-  initialize_byte_buffer(this->data_received_, this->data_received_size_);
-  initialize_byte_buffer(this->data_sent_, this->data_sent_size_);
-
-  ESP_LOGI(TAG, "I2C Slave ready to receive on address 0x%02x", this->address_);
-  ready_ = true;
 }
 
 // Setup the prefix
@@ -346,7 +346,7 @@ int I2CIDFSlaveDevice::read_data(size_t size) {
   if (!size || size > this->data_received_size_)
     size = this->data_received_size_;
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-  return 0;
+  return size;
 #else
   return i2c_slave_read_buffer(this->i2c_slave_port_, this->data_received_, size, 0);
 #endif
@@ -385,7 +385,11 @@ int I2CIDFSlaveDevice::write_data(size_t size) {
   if (!size)
     size = this->data_sent_size_;
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-  return 0;
+  uint32_t write_len = 0;
+  esp_err_t err = i2c_slave_write(this->i2c_slave_dev_handle_, this->data_sent_, size, &write_len, 0);
+  if (err)
+    return -1;
+  return (int) write_len;
 #else
   return i2c_slave_write_buffer(this->i2c_slave_port_, this->data_sent_, size, 0);
 #endif

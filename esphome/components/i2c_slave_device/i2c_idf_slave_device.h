@@ -1,7 +1,6 @@
 #pragma once
 
 #include "esphome/core/component.h"
-#include "esphome/core/string_ref.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/button/button.h"
 #include "esphome/components/cover/cover.h"
@@ -10,15 +9,6 @@
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/template/binary_sensor/template_binary_sensor.h"
-#include "esp_idf_version.h"
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(8, 4, 1)  // ESP_IDF_VERSION >= 5.4.1
-#ifndef CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2     // driver v2 not defined
-#define CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2 1   // define and enable I2C Slave v2 driver
-#endif                                               // driver v2 not defined
-#else
-#define CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2 0
-#endif  // ESP_IDF_VERSION
 
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 #include <driver/i2c_slave.h>
@@ -92,8 +82,8 @@ class I2CIDFSlaveDevice : public PollingComponent {
  public:
   ~I2CIDFSlaveDevice();
 
-  void set_sda_pin(uint8_t sda_pin) { this->sda_pin_ = (gpio_num_t) sda_pin; }
-  void set_scl_pin(uint8_t scl_pin) { this->scl_pin_ = (gpio_num_t) scl_pin; }
+  void set_sda_pin(uint8_t sda_pin) { this->sda_pin_ = static_cast<gpio_num_t>(sda_pin); }
+  void set_scl_pin(uint8_t scl_pin) { this->scl_pin_ = static_cast<gpio_num_t>(scl_pin); }
   void set_pullup(bool pullup) { this->pullup_ = pullup; }
   void set_address(uint8_t address) { this->address_ = (uint16_t) address; }
   void set_rx_buffer_size(uint16_t rx_buffer_size) { this->rx_buffer_size_ = (size_t) rx_buffer_size; }
@@ -107,6 +97,8 @@ class I2CIDFSlaveDevice : public PollingComponent {
   void dump_config() override;
   void update() override;
 
+  void logtest() { ESP_LOGI("FGFFDFDF", "OKOKOKKOKOOKOKOKKOKO"); }
+
   int read_data(size_t size = 0);
   void get_data(uint8_t *data, size_t size = 0);
   std::string get_data(size_t size = 0);
@@ -115,9 +107,10 @@ class I2CIDFSlaveDevice : public PollingComponent {
   int write_data(std::string data);
 
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-  static bool i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave, const i2c_slave_rx_done_event_data_t *rx_data,
-                                    void *arg);
-  void handle_rx_event(const i2c_slave_rx_done_event_data_t *rx_buffer);
+  static bool i2c_slave_receive_callback(i2c_slave_dev_handle_t i2c_slave,
+                                         const i2c_slave_rx_done_event_data_t *evt_data, void *arg);
+  static bool i2c_slave_request_callback(i2c_slave_dev_handle_t i2c_slave,
+                                         const i2c_slave_request_event_data_t *evt_data, void *arg);
 #endif
 
  private:
@@ -236,8 +229,6 @@ class I2CIDFSlaveDevice : public PollingComponent {
   uint8_t *data_received_{nullptr};
   uint8_t *data_sent_{nullptr};
 };
-
-typedef I2CIDFSlaveDevice I2CSlaveDevice;
 
 }  // namespace i2c_slave_device
 }  // namespace esphome
