@@ -10,34 +10,6 @@ static const char *const TAG = "i2c_slave_device";
 
 // HELPERS
 
-// Converts unsigned 32-bit int into smallest byte array, allocates memory and return a pointer to the byte_array
-static uint8_t uint32_to_byte_array_(uint8_t *&byte_array, uint32_t int_value) {
-  uint8_t size = 0;
-
-  if (byte_array)
-    return 0;
-
-  // if the unsigned int is 0, allocate an array of size 1 and set to 0
-  if (!int_value) {
-    byte_array = new uint8_t[1];
-    byte_array[0] = 0;
-    return 1;
-  }
-
-  for (int i = sizeof(uint32_t) - 1; i >= 0; i--) {
-    uint8_t byte_value = (int_value >> i * 8) & 0xFF;
-    // if octet > 0, alloc byte_array if not allocated with size = first non-zero octet
-    if (!byte_array && byte_value) {
-      size = i + 1;
-      byte_array = new uint8_t[size];
-    }
-    if (byte_array)
-      byte_array[size - 1 - i] = byte_value;
-  }
-
-  return size;
-}
-
 // Create a new buffer with specified size and set contents to zero. Delete if already exists.
 static void initialize_byte_buffer(uint8_t *&byte_array, size_t size) {
   if (byte_array)
@@ -64,24 +36,43 @@ static void get_diff_value(float *old_value, float *new_value) {
 }
 
 // Converts a byte_array to a string of hex values
-static void get_hex_string(char *&hex_string, const uint8_t *byte_array, size_t byte_array_size) {
-  for (size_t i = 0; i < byte_array_size; i++) {
-    sprintf(hex_string + i * 5, "0x%02x ", byte_array[i]);
+static std::string get_hex_string(const uint8_t *byte_array, const size_t size) {
+  std::string hex_string = "";
+  for (size_t i = 0; i < size; i++) {
+    char byte_temp_string[5]{0};
+    sprintf(byte_temp_string, "0x%02x ", byte_array[i]);
+    hex_string = hex_string + byte_temp_string;
   }
+  return hex_string;
 }
 
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 // CALL BACKS
 
-void IRAM_ATTR i2c_slave_isr_handler_rx(void *arg) {
-  ESP_LOGI(TAG, "I2C callback triggered!");
-  /*
-  i2c_intr_event_t evt_type = I2C_INTR_EVENT_ERR;
-  i2c_ll_slave_get_event(&I2C0, &evt_type);
-  if (evt_type == I2C_INTR_EVENT_TRANS_DONE || evt_type == I2C_INTR_EVENT_RXFIFO_FULL) {
-    ESP_LOGD(TAG, "Data received from master");
-  }
-  */
+// Call back on receive data from mastyer
+bool I2CIDFSlaveDevice::i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave,
+                                              const i2c_slave_rx_done_event_data_t *rx_event_data, void *arg) {
+  ESP_LOGI(TAG, "Data received callback triggered");
+  // i2c_slave_event_t evt = I2C_SLAVE_EVT_RX;
+  // BaseType_t xTaskWoken = 0;
+  I2CIDFSlaveDevice *slave_device = (I2CIDFSlaveDevice *) arg;
+  if (slave_device)
+    slave_device->handle_rx_event(rx_event_data);
+  // xQueueSendFromISR(context->event_queue, &evt, &xTaskWoken);
+  return 0;
 }
+
+void I2CIDFSlaveDevice::handle_rx_event(const i2c_slave_rx_done_event_data_t *rx_buffer) {
+  if (!rx_buffer)
+    return;
+
+  uint32_t max_size = (rx_buffer->length < this->data_received_size_) ? rx_buffer->length : this->data_received_size_;
+
+  for (int i = 0; i < max_size; i++)
+    this->data_received_[i] = rx_buffer->buffer[i];
+}
+
+#endif
 
 // SETUP
 
@@ -89,12 +80,16 @@ void I2CIDFSlaveDevice::setup() {
   ESP_LOGI(TAG, "Setting up I2C Slave Bus...");
   esp_err_t err;
 
-  // Set slave mode in I2C config
-  this->i2c_slave_config_.mode = I2C_MODE_SLAVE;
-  // Disable 10-bit mode
-  this->i2c_slave_config_.slave.addr_10bit_en = 0;
+  // Calculate the total command size
+  this->command_size_ = this->prefix_size_ + 2;
+  this->data_received_size_ = this->command_size_ * this->rx_buffer_size_;
+  this->data_sent_size_ = this->tx_buffer_size_;
 
-  // Find and set free port
+  // tx and rx buffer size needs to be > 100 for I2C esp-idf driver in slave mode
+  size_t internal_rx_buffer_size = (this->data_received_size_ < 100) ? 100 : this->data_received_size_;
+  size_t internal_tx_buffer_size = (this->data_sent_size_ < 100) ? 100 : this->data_sent_size_;
+
+  // Find and set free I2C port
   static i2c_port_t next_port = I2C_NUM_0;
   this->i2c_slave_port_ = next_port;
 #if SOC_I2C_NUM > 1
@@ -108,43 +103,87 @@ void I2CIDFSlaveDevice::setup() {
     return;
   }
 
-  // Initialize I2C in slave mode
-  err = i2c_param_config(this->i2c_slave_port_, &this->i2c_slave_config_);
+// Set the i2c driver config and start it
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+
+  uint32_t internal_pullup = (this->pullup_) ? 1 : 0;
+  i2c_slave_config_t i2c_slave_config = {
+      .i2c_port = this->i2c_slave_port_,
+      .sda_io_num = this->sda_pin_,
+      .scl_io_num = this->scl_pin_,
+      .clk_source = I2C_CLK_SRC_DEFAULT,
+      .send_buf_depth = 100,
+      .receive_buf_depth = 100,
+      .slave_addr = this->address_,
+      .addr_bit_len = I2C_ADDR_BIT_LEN_7,
+      .intr_priority = 0,
+      .flags =
+          {
+              .allow_pd = 1,
+              .enable_internal_pullup = internal_pullup,
+          },
+  };
+
+  // Register the i2c slave device
+  err = i2c_new_slave_device(&i2c_slave_config, &this->i2c_slave_dev_handle_);
+
+  // Assign the callback function on receive and send
+  i2c_slave_event_callbacks_t i2c_slave_callbacks = {
+      .on_receive = i2c_slave_rx_callback,
+  };
+  err = i2c_slave_register_event_callbacks(this->i2c_slave_dev_handle_, &i2c_slave_callbacks, this);
+
+  // Set the update interval to 'never' as we will use callbacks in driver v2
+  this->set_update_interval(SCHEDULER_DONT_RUN);
+
+#else
+
+  i2c_config_t i2c_slave_config{};
+  memset(&i2c_slave_config, 0, sizeof(i2c_slave_config));
+  i2c_slave_config.mode = I2C_MODE_SLAVE;
+  i2c_slave_config.sda_io_num = this->sda_pin_;
+  i2c_slave_config.scl_io_num = this->scl_pin_;
+  i2c_slave_config.sda_pullup_en = this->pullup_;
+  i2c_slave_config.scl_pullup_en = this->pullup_;
+  i2c_slave_config.slave.slave_addr = this->address_;
+
+  err = i2c_param_config(this->i2c_slave_port_, &i2c_slave_config);
+
   if (err != ESP_OK) {
-    ESP_LOGE(TAG, "Failed to register on port %d. Error: %d", i2c_slave_port_, err);
+    ESP_LOGE(TAG, "Failed to configure I2C slave on port %d. Error: %d", i2c_slave_port_, err);
     mark_failed();
     return;
   }
 
-  // Set the prefix buffer
-  this->prefix_size_ = uint32_to_byte_array_(this->prefix_, this->command_prefix_);
+  err = i2c_driver_install(this->i2c_slave_port_, I2C_MODE_SLAVE, internal_rx_buffer_size, internal_tx_buffer_size, 0);
 
-  // Calculate the total command size
-  this->command_size_ = this->prefix_size_ + CMD_BASE_SIZE;
-  this->data_received_size_ = this->command_size_ * this->rx_buffer_size_;
-  this->data_sent_size_ = this->tx_buffer_size_;
-
-  // tx and rx buffer size needs to be > 100 for I2C esp-idf driver in slave mode
-  size_t internal_rx_buffer_size = (this->data_received_size_ < 101) ? 101 : this->data_received_size_;
-  size_t internal_tx_buffer_size = (this->data_sent_size_ < 101) ? 101 : this->data_sent_size_;
-
-  // Install the I2C driver
-  err = i2c_driver_install(this->i2c_slave_port_, this->i2c_slave_config_.mode, internal_rx_buffer_size,
-                           internal_tx_buffer_size, 0);
+#endif
 
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to install I2C slave driver. Error: %d", err);
-    delete[] prefix_;
     mark_failed();
     return;
   }
 
   // Allocate buffers
-  initialize_byte_buffer(data_received_, data_received_size_);
-  initialize_byte_buffer(data_sent_, data_sent_size_);
+  initialize_byte_buffer(this->data_received_, this->data_received_size_);
+  initialize_byte_buffer(this->data_sent_, this->data_sent_size_);
 
-  ESP_LOGI(TAG, "I2C Slave ready to receive on address %d", i2c_slave_config_.slave.slave_addr);
+  ESP_LOGI(TAG, "I2C Slave ready to receive on address 0x%02x", this->address_);
   ready_ = true;
+}
+
+// Setup the prefix
+void I2CIDFSlaveDevice::set_prefix(uint32_t prefix) {
+  size_t size = 0;
+  for (int i = 3; i >= 0; i--) {
+    uint8_t byte_value = (prefix >> i * 8) & 0xFF;
+    // Set the size when first most significant byte != 0
+    if (!size && byte_value)
+      size = i + 1;
+    this->prefix_[i] = byte_value;
+  }
+  this->prefix_size_ = size;
 }
 
 // Setup actions for each component based on type
@@ -218,53 +257,59 @@ void I2CIDFSlaveDevice::update() {
   int rx_data_size = read_data();
 
   // Stop processing if data read size is smaller than minimum command size
-  if (rx_data_size < command_size_)
+  if (rx_data_size < this->command_size_)
     return;
 
   // Loop through the received data
-  for (int i = 0; i <= rx_data_size - command_size_; i++) {
+  for (int i = 0; i <= rx_data_size - this->command_size_; i++) {
     // Check if the prefix is valid
-    for (int j = 0; j < prefix_size_; j++) {
-      if (prefix_[j] != data_received_[j + i]) {
-        ESP_LOGD(TAG, "Invalid prefix byte: 0x%02x, expected: 0x%02x", data_received_[j + i], prefix_[i]);
-        continue;
+    if (prefix_size_ > 0) {
+      bool prefix_valid = true;
+      for (int j = 0; j < this->prefix_size_; j++) {
+        if (this->prefix_[j] != this->data_received_[j + i]) {
+          prefix_valid = false;
+          ESP_LOGD(TAG, "Invalid prefix byte: 0x%02x, expected: 0x%02x", this->data_received_[j + i], this->prefix_[i]);
+          break;
+        }
+        i++;
       }
-      i++;
+      if (!prefix_valid)
+        continue;
     }
 
     // Check if the target component is configured
-    uint8_t target = data_received_[i];
-    if (!actions_[target]) {
+    uint8_t target = this->data_received_[i];
+    if (!this->actions_[target]) {
       ESP_LOGD(TAG, "Invalid target ID: 0x%02x", target);
       continue;
     }
 
     // Check if the requested action type is valid
-    if (!data_received_[i + 1] || data_received_[i + 1] >= INVALID_ACTION) {
-      ESP_LOGD(TAG, "Invalid action: 0x%02x", data_received_[i + 1]);
+    if (!this->data_received_[i + 1] || this->data_received_[i + 1] >= INVALID_ACTION) {
+      ESP_LOGD(TAG, "Invalid action: 0x%02x", this->data_received_[i + 1]);
       continue;
     }
     i++;
-    TargetAction action = (TargetAction) data_received_[i];
+    TargetAction action = (TargetAction) this->data_received_[i];
 
     // Trigger the action if no property and/or value is required. (not a GET/SET action)
     if (action < GET) {
-      actions_[target]->trigger(action);
+      this->actions_[target]->trigger(action);
       ESP_LOGD(TAG, "Target ID 0x%02x: triggered action %s", target, str_target_actions[action]);
       continue;
     }
 
     // Check if the property to SET/GET is valid, if not, default to SET/GET the state
     TargetProperty property = STATE;
-    if (i + 1 < rx_data_size && data_received_[i + 1] && data_received_[i + 1] < INVALID_PROPERTY) {
+    if (i + 1 < rx_data_size && this->data_received_[i + 1] && this->data_received_[i + 1] < INVALID_PROPERTY) {
       i++;
-      property = (TargetProperty) data_received_[i];
+      property = (TargetProperty) this->data_received_[i];
     }
 
     // Get the requested property from the component and write it to the tx buffer so the master can read it
     if (action == GET) {
-      size_t data_sent_size = actions_[target]->get(property, data_sent_, data_sent_size_);
-      set_data(data_sent_, data_sent_size);
+      size_t data_size = this->actions_[target]->get(property, this->data_sent_, this->data_sent_size_);
+      write_data(data_size);
       ESP_LOGD(TAG, "Target ID 0x%02x: wrote property %s", target, str_target_properties[property]);
       continue;
     }
@@ -279,14 +324,14 @@ void I2CIDFSlaveDevice::update() {
     // Handle the SET/INCREASE/DECREASE actions
     i++;
     // Cast to a signed 16 bit int to allow for negative values when action is DECREASE
-    int16_t value = (int16_t) data_received_[i];
+    int16_t value = (int16_t) this->data_received_[i];
     // Set the relative flag if the action is INCREASE or DECREASE
     bool relative = (action == INCREASE || action == DECREASE);
     // Set the relative value to a negative number when the action is DECREASE
     if (action == DECREASE)
       value = 0 - value;
     // Trigger the action on the defined property with the defined value
-    actions_[target]->set(property, value, relative);
+    this->actions_[target]->set(property, value, relative);
     ESP_LOGD(TAG, "Target ID 0x%02x: SET %s with %s value %d", target, str_target_properties[property],
              (relative) ? "relative" : "absolute", value);
   }
@@ -295,56 +340,63 @@ void I2CIDFSlaveDevice::update() {
 // I2C OPERATIONS
 
 // Reads data sent by the master from the i2c rx buffer into the data_received_ buffer and return the size
-int I2CIDFSlaveDevice::read_data() {
+int I2CIDFSlaveDevice::read_data(size_t size) {
   if (!ready_)
     return -2;
-  return i2c_slave_read_buffer(i2c_slave_port_, data_received_, data_received_size_, 0);
+  if (!size || size > this->data_received_size_)
+    size = this->data_received_size_;
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+  return 0;
+#else
+  return i2c_slave_read_buffer(this->i2c_slave_port_, this->data_received_, size, 0);
+#endif
 }
 
 // Reads data sent by the master from the i2c rx buffer into a byte-array
-void I2CIDFSlaveDevice::get_data(uint8_t *data) {
-  int rx_data_size = read_data();
-  if (rx_data_size <= 0)
+void I2CIDFSlaveDevice::get_data(uint8_t *data, size_t size) {
+  if (!data)
     return;
-
-  for (int i = 0; i < rx_data_size; i++)
-    data[i] = data_received_[i];
+  int rx_data_size = this->read_data(size);
+  for (int i = 0; i < rx_data_size && i < sizeof(data); i++)
+    data[i] = this->data_received_[i];
 }
 
 // Reads data sent by the master from the i2c rx buffer into a string
-std::string I2CIDFSlaveDevice::get_data() {
-  int data_rx_size = read_data();
+std::string I2CIDFSlaveDevice::get_data(size_t size) {
+  int rx_data_size = this->read_data(size);
 
-  if (data_rx_size == -2)
+  if (rx_data_size == -2)
     return "NOT READY";
 
-  if (data_rx_size < 0)
+  if (rx_data_size < 0)
     return "ERROR";
 
   std::string received_data = "";
-  for (int i = 0; i < data_rx_size; i++)
-    received_data += data_received_[i];
+  for (int i = 0; i < rx_data_size; i++)
+    received_data += this->data_received_[i];
 
   return received_data;
 }
 
 // Writes byte-array to the i2c tx buffer to be read by master
-int I2CIDFSlaveDevice::set_data(uint8_t *data, size_t size) {
+int I2CIDFSlaveDevice::write_data(size_t size) {
   if (!ready_)
     return -2;
-  if (!data)
-    return -1;
   if (!size)
-    size = data_sent_size_;
-  return i2c_slave_write_buffer(i2c_slave_port_, data, size, 0);
+    size = this->data_sent_size_;
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+  return 0;
+#else
+  return i2c_slave_write_buffer(this->i2c_slave_port_, this->data_sent_, size, 0);
+#endif
 }
 
 // Writes string to the i2c tx buffer to be read by master
-int I2CIDFSlaveDevice::set_data(std::string data) {
-  size_t size = (data.length() < data_sent_size_) ? data.length() : data_sent_size_;
+int I2CIDFSlaveDevice::write_data(std::string data) {
+  size_t size = (data.length() < this->data_sent_size_) ? data.length() : this->data_sent_size_;
   for (int i = 0; i < size; i++)
-    data_sent_[i] = data[i];
-  return set_data(data_sent_, size);
+    this->data_sent_[i] = data[i];
+  return this->write_data(size);
 }
 
 // ACTION HANDLERS
@@ -354,13 +406,13 @@ int I2CIDFSlaveDevice::set_data(std::string data) {
 size_t I2CIDFSlaveDevice::I2CActionCover_::get(TargetProperty property, uint8_t *data, const size_t max_size) {
   switch (property) {
     case STATE:
-      data[0] = (target_->position > 0.0f) ? 1 : 0;
+      data[0] = (this->target_->position > 0.0f) ? 1 : 0;
       break;
     case POSITION:
-      data[0] = percent_float_to_byte(target_->position);
+      data[0] = percent_float_to_byte(this->target_->position);
       break;
     case TILT:
-      data[0] = percent_float_to_byte(target_->tilt);
+      data[0] = percent_float_to_byte(this->target_->tilt);
       break;
     default:
       return 0;
@@ -373,17 +425,17 @@ void I2CIDFSlaveDevice::I2CActionCover_::set(TargetProperty property, int16_t va
   switch (property) {
     case POSITION:
       if (relative) {
-        float old_value = percent_float_to_byte(target_->position);
+        float old_value = percent_float_to_byte(this->target_->position);
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_position(new_value).perform();
+      this->target_->make_call().set_position(new_value).perform();
       break;
     case TILT:
       if (relative) {
-        float old_value = percent_float_to_byte(target_->tilt);
+        float old_value = percent_float_to_byte(this->target_->tilt);
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_tilt(new_value).perform();
+      this->target_->make_call().set_tilt(new_value).perform();
       break;
     default:
       return;
@@ -393,16 +445,16 @@ void I2CIDFSlaveDevice::I2CActionCover_::set(TargetProperty property, int16_t va
 void I2CIDFSlaveDevice::I2CActionCover_::trigger(TargetAction action) {
   switch (action) {
     case OPEN:
-      target_->make_call().set_command_open().perform();
+      this->target_->make_call().set_command_open().perform();
       break;
     case CLOSE:
-      target_->make_call().set_command_close().perform();
+      this->target_->make_call().set_command_close().perform();
       break;
     case TOGGLE:
-      target_->make_call().set_command_toggle().perform();
+      this->target_->make_call().set_command_toggle().perform();
       break;
     case STOP:
-      target_->make_call().set_command_stop().perform();
+      this->target_->make_call().set_command_stop().perform();
       break;
     default:
       return;
@@ -414,33 +466,33 @@ void I2CIDFSlaveDevice::I2CActionCover_::trigger(TargetAction action) {
 size_t I2CIDFSlaveDevice::I2CActionLight_::get(TargetProperty property, uint8_t *data, const size_t max_size) {
   switch (property) {
     case BRIGHTNESS:
-      data[0] = percent_float_to_byte(target_->current_values.get_brightness());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_brightness());
       break;
     case RED:
-      data[0] = percent_float_to_byte(target_->current_values.get_red());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_red());
       break;
     case GREEN:
-      data[0] = percent_float_to_byte(target_->current_values.get_green());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_green());
       break;
     case BLUE:
-      data[0] = percent_float_to_byte(target_->current_values.get_blue());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_blue());
       break;
     case WHITE:
-      data[0] = percent_float_to_byte(target_->current_values.get_white());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_white());
       break;
     case COLD_WHITE:
-      data[0] = percent_float_to_byte(target_->current_values.get_cold_white());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_cold_white());
       break;
     case WARM_WHITE:
-      data[0] = percent_float_to_byte(target_->current_values.get_warm_white());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_warm_white());
       break;
     case COLOR_TEMPERATURE:
-      data[0] = percent_float_to_byte(target_->current_values.get_color_temperature());
+      data[0] = percent_float_to_byte(this->target_->current_values.get_color_temperature());
       break;
     case EFFECT: {
-      if (!target_->supports_effects())
+      if (!this->target_->supports_effects())
         return 0;
-      std::string effect = target_->get_effect_name();
+      std::string effect = this->target_->get_effect_name();
       size_t size = (effect.length() < max_size) ? effect.length() : max_size;
       for (int i = 0; i < size; i++)
         data[i] = effect[i];
@@ -457,64 +509,64 @@ void I2CIDFSlaveDevice::I2CActionLight_::set(TargetProperty property, int16_t va
   switch (property) {
     case BRIGHTNESS:
       if (relative) {
-        float old_value = target_->current_values.get_brightness();
+        float old_value = this->target_->current_values.get_brightness();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_brightness_if_supported(new_value).perform();
+      this->target_->make_call().set_brightness_if_supported(new_value).perform();
       break;
     case RED:
       if (relative) {
-        float old_value = target_->current_values.get_red();
+        float old_value = this->target_->current_values.get_red();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_red_if_supported(new_value).perform();
+      this->target_->make_call().set_red_if_supported(new_value).perform();
       break;
     case GREEN:
       if (relative) {
-        float old_value = target_->current_values.get_green();
+        float old_value = this->target_->current_values.get_green();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_green_if_supported(new_value).perform();
+      this->target_->make_call().set_green_if_supported(new_value).perform();
       break;
     case BLUE:
       if (relative) {
-        float old_value = target_->current_values.get_blue();
+        float old_value = this->target_->current_values.get_blue();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_blue_if_supported(new_value).perform();
+      this->target_->make_call().set_blue_if_supported(new_value).perform();
       break;
     case WHITE:
       if (relative) {
-        float old_value = target_->current_values.get_white();
+        float old_value = this->target_->current_values.get_white();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_white_if_supported(new_value).perform();
+      this->target_->make_call().set_white_if_supported(new_value).perform();
       break;
     case COLD_WHITE:
       if (relative) {
-        float old_value = target_->current_values.get_cold_white();
+        float old_value = this->target_->current_values.get_cold_white();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_cold_white_if_supported(new_value).perform();
+      this->target_->make_call().set_cold_white_if_supported(new_value).perform();
       break;
     case WARM_WHITE:
       if (relative) {
-        float old_value = target_->current_values.get_warm_white();
+        float old_value = this->target_->current_values.get_warm_white();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_warm_white_if_supported(new_value).perform();
+      this->target_->make_call().set_warm_white_if_supported(new_value).perform();
       break;
     case COLOR_TEMPERATURE:
       if (relative) {
-        float old_value = target_->current_values.get_color_temperature();
+        float old_value = this->target_->current_values.get_color_temperature();
         get_diff_value(&old_value, &new_value);
       }
-      target_->make_call().set_color_temperature_if_supported(new_value).perform();
+      this->target_->make_call().set_color_temperature_if_supported(new_value).perform();
       break;
     case EFFECT:
-      if (!target_->supports_effects())
+      if (!this->target_->supports_effects())
         return;
-      target_->make_call().set_effect((uint32_t) value).perform();
+      this->target_->make_call().set_effect((uint32_t) value).perform();
       break;
     default:
       return;
@@ -524,15 +576,13 @@ void I2CIDFSlaveDevice::I2CActionLight_::set(TargetProperty property, int16_t va
 void I2CIDFSlaveDevice::I2CActionLight_::trigger(TargetAction action) {
   switch (action) {
     case TURN_ON:
-      target_->turn_on().perform();
-      ;
+      this->target_->turn_on().perform();
       break;
     case TURN_OFF:
-      target_->turn_off().perform();
-      ;
+      this->target_->turn_off().perform();
       break;
     case TOGGLE:
-      target_->toggle().perform();
+      this->target_->toggle().perform();
       break;
     default:
       return;
@@ -543,7 +593,7 @@ void I2CIDFSlaveDevice::I2CActionLight_::trigger(TargetAction action) {
 
 size_t I2CIDFSlaveDevice::I2CActionSensor_::get(TargetProperty property, uint8_t *data, const size_t max_size) {
   size_t size = sizeof(float);
-  uint8_t *state = (uint8_t *) &target_->state;
+  uint8_t *state = (uint8_t *) &this->target_->state;
   for (int i = size - 1; i >= 0; i--) {
     data[i] = state[i];
   }
@@ -553,13 +603,13 @@ size_t I2CIDFSlaveDevice::I2CActionSensor_::get(TargetProperty property, uint8_t
 void I2CIDFSlaveDevice::I2CActionSwitch_::trigger(TargetAction action) {
   switch (action) {
     case TURN_ON:
-      target_->turn_on();
+      this->target_->turn_on();
       break;
     case TURN_OFF:
-      target_->turn_off();
+      this->target_->turn_off();
       break;
     case TOGGLE:
-      target_->toggle();
+      this->target_->toggle();
       break;
     default:
       return;
@@ -569,9 +619,9 @@ void I2CIDFSlaveDevice::I2CActionSwitch_::trigger(TargetAction action) {
 // TEXT_SENSOR actions
 
 size_t I2CIDFSlaveDevice::I2CActionTextSensor_::get(TargetProperty property, uint8_t *data, const size_t max_size) {
-  if (!target_->has_state())
+  if (!this->target_->has_state())
     return 0;
-  std::string state = target_->state;
+  std::string state = this->target_->state;
   size_t size = (state.length() < max_size) ? state.length() : max_size;
   for (int i = 0; i < size; i++)
     data[i] = state[i];
@@ -580,37 +630,32 @@ size_t I2CIDFSlaveDevice::I2CActionTextSensor_::get(TargetProperty property, uin
 
 void I2CIDFSlaveDevice::I2CActionTextSensor_::set(TargetProperty property, int16_t value, bool relative) {
   std::string new_state = (const char *) &value;
-  if (relative && target_->has_state()) {
-    new_state = target_->state.append((const char *) &value);
-    target_->publish_state(new_state);
+  if (relative && this->target_->has_state()) {
+    new_state = this->target_->state.append((const char *) &value);
+    this->target_->publish_state(new_state);
     return;
   }
-  target_->publish_state(new_state);
+  this->target_->publish_state(new_state);
 }
 
 // Dump config to config log
 void I2CIDFSlaveDevice::dump_config() {
-  char *prefix_string = new char[prefix_size_ * 5];
-  get_hex_string(prefix_string, prefix_, prefix_size_);
+  std::string prefix_string = get_hex_string(this->prefix_, this->prefix_size_);
 
   ESP_LOGCONFIG(TAG, "I2C Slave Device :");
-  ESP_LOGCONFIG(TAG, "  SDA Pin: %d", i2c_slave_config_.sda_io_num);
-  ESP_LOGCONFIG(TAG, "    Pullup: %s", (i2c_slave_config_.sda_pullup_en == GPIO_PULLUP_ENABLE) ? "yes" : "no");
-  ESP_LOGCONFIG(TAG, "  SCL Pin: %d", i2c_slave_config_.scl_io_num);
-  ESP_LOGCONFIG(TAG, "    Pullup: %s", (i2c_slave_config_.scl_pullup_en == GPIO_PULLUP_ENABLE) ? "yes" : "no");
-  ESP_LOGCONFIG(TAG, "  Address: 0x%02x", i2c_slave_config_.slave.slave_addr);
-  ESP_LOGCONFIG(TAG, "  Max Frequency: %d %s",
-                (i2c_slave_config_.slave.maximum_speed > 1000) ? i2c_slave_config_.slave.maximum_speed / 1000
-                                                               : i2c_slave_config_.slave.maximum_speed,
-                (i2c_slave_config_.slave.maximum_speed > 1000) ? "kHz" : "Hz");
-  ESP_LOGCONFIG(TAG, "  Rx Buffer: %d commands, %d bytes", rx_buffer_size_, data_received_size_);
-  ESP_LOGCONFIG(TAG, "  Tx Buffer: %d bytes", data_sent_size_);
-  ESP_LOGCONFIG(TAG, "  ---  Command format - size: %d  --- ", command_size_);
+  ESP_LOGCONFIG(TAG, "  SDA Pin: %d", this->sda_pin_);
+  ESP_LOGCONFIG(TAG, "  SCL Pin: %d", this->scl_pin_);
+  ESP_LOGCONFIG(TAG, "  Pullup: %s", (this->pullup_) ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  Address: 0x%02x", this->address_);
+  ESP_LOGCONFIG(TAG, "  Rx Buffer: %d commands, %d bytes", this->rx_buffer_size_);
+  ESP_LOGCONFIG(TAG, "  Tx Buffer: %d bytes", this->tx_buffer_size_);
+  ESP_LOGCONFIG(TAG, "  Prefix   : %s", prefix_string);
+  ESP_LOGCONFIG(TAG, "  ---  Command format - size: %d  --- ", this->command_size_);
   ESP_LOGCONFIG(TAG, "  Format ALL : %s <targetID> <action>", prefix_string);
   ESP_LOGCONFIG(TAG, "  Format GET : %s <targetID> <action> <property>", prefix_string);
   ESP_LOGCONFIG(TAG, "  Format SET : %s <targetID> <action> <property> <value>", prefix_string);
   ESP_LOGCONFIG(TAG, "  --- Target IDs --- ");
-  for (const auto &[target_id, action] : actions_)
+  for (const auto &[target_id, action] : this->actions_)
     ESP_LOGCONFIG(TAG, "  0x%02x   : %s", target_id, action->target_name.c_str());
   ESP_LOGCONFIG(TAG, "  ---  Actions   --- ");
   for (int i = 1; i < INVALID_ACTION && i < sizeof(str_target_actions) * sizeof(char *); i++)
@@ -618,23 +663,23 @@ void I2CIDFSlaveDevice::dump_config() {
   ESP_LOGCONFIG(TAG, "  --- Properties --- ");
   for (int i = 1; i < INVALID_PROPERTY && i < sizeof(str_target_actions) * sizeof(char *); i++)
     ESP_LOGCONFIG(TAG, "  0x%02x   : %s", i, str_target_properties[i]);
-
-  delete[] prefix_string;
 }
 
 // Destructor: clean up dynamically allocated buffers
 I2CIDFSlaveDevice::~I2CIDFSlaveDevice() {
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+#else
   if (ready_)
-    i2c_driver_delete(i2c_slave_port_);
-  for (const auto &[target_id, action] : actions_)
+    i2c_driver_delete(this->i2c_slave_port_);
+#endif
+  for (const auto &[target_id, action] : this->actions_) {
     if (action)
       delete action;
-  if (prefix_)
-    delete[] prefix_;
-  if (data_received_)
-    delete[] data_received_;
-  if (data_sent_)
-    delete[] data_sent_;
+  }
+  if (this->data_received_)
+    delete[] this->data_received_;
+  if (this->data_sent_)
+    delete[] this->data_sent_;
 }
 
 }  // namespace i2c_slave_device

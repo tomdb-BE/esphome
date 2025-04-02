@@ -1,9 +1,5 @@
 #pragma once
 
-#ifndef CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-#define CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-#endif
-
 #include "esphome/core/component.h"
 #include "esphome/core/string_ref.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -14,8 +10,21 @@
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/template/binary_sensor/template_binary_sensor.h"
+#include "esp_idf_version.h"
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(8, 4, 1)  // ESP_IDF_VERSION >= 5.4.1
+#ifndef CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2     // driver v2 not defined
+#define CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2 1   // define and enable I2C Slave v2 driver
+#endif                                               // driver v2 not defined
+#else
+#define CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2 0
+#endif  // ESP_IDF_VERSION
+
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+#include <driver/i2c_slave.h>
+#else
 #include <driver/i2c.h>
+#endif
 
 #include <string>
 #include <map>
@@ -81,23 +90,15 @@ const char *const str_target_properties[] = {
 
 class I2CIDFSlaveDevice : public PollingComponent {
  public:
-  static const size_t CMD_BASE_SIZE = 2;
-
   ~I2CIDFSlaveDevice();
 
-  void set_sda_pin(uint8_t pin_sda) { i2c_slave_config_.sda_io_num = gpio_num_t(pin_sda); }
-  void set_scl_pin(uint8_t pin_scl) { i2c_slave_config_.scl_io_num = gpio_num_t(pin_scl); }
-  void set_pullup_enabled_sda(bool pullup_enabled_sda) {
-    i2c_slave_config_.sda_pullup_en = (pullup_enabled_sda) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
-  }
-  void set_pullup_enabled_scl(bool pullup_enabled_scl) {
-    i2c_slave_config_.scl_pullup_en = (pullup_enabled_scl) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE;
-  }
-  void set_max_frequency(uint32_t max_frequency) { i2c_slave_config_.slave.maximum_speed = max_frequency; }
-  void set_address(uint8_t address) { i2c_slave_config_.slave.slave_addr = (uint16_t) address; }
-  void set_command_prefix(uint32_t command_prefix) { command_prefix_ = command_prefix; }
-  void set_rx_buffer_size(uint8_t rx_buffer_size) { rx_buffer_size_ = (size_t) rx_buffer_size; }
-  void set_tx_buffer_size(uint8_t tx_buffer_size) { tx_buffer_size_ = (size_t) tx_buffer_size; }
+  void set_sda_pin(uint8_t sda_pin) { this->sda_pin_ = (gpio_num_t) sda_pin; }
+  void set_scl_pin(uint8_t scl_pin) { this->scl_pin_ = (gpio_num_t) scl_pin; }
+  void set_pullup(bool pullup) { this->pullup_ = pullup; }
+  void set_address(uint8_t address) { this->address_ = (uint16_t) address; }
+  void set_rx_buffer_size(uint16_t rx_buffer_size) { this->rx_buffer_size_ = (size_t) rx_buffer_size; }
+  void set_tx_buffer_size(uint16_t tx_buffer_size) { this->tx_buffer_size_ = (size_t) tx_buffer_size; }
+  void set_prefix(uint32_t prefix);
   void set_component(void *target = nullptr, TargetType type = TYPE_NONE, uint8_t target_id = 0,
                      std::string target_name = "<unknown>");
 
@@ -106,12 +107,18 @@ class I2CIDFSlaveDevice : public PollingComponent {
   void dump_config() override;
   void update() override;
 
-  int read_data();
-  void get_data(uint8_t *data);
-  std::string get_data();
+  int read_data(size_t size = 0);
+  void get_data(uint8_t *data, size_t size = 0);
+  std::string get_data(size_t size = 0);
 
-  int set_data(uint8_t *data, size_t size = 0);
-  int set_data(std::string data);
+  int write_data(size_t size);
+  int write_data(std::string data);
+
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+  static bool i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave, const i2c_slave_rx_done_event_data_t *rx_data,
+                                    void *arg);
+  void handle_rx_event(const i2c_slave_rx_done_event_data_t *rx_buffer);
+#endif
 
  private:
   class I2CAction_ {
@@ -209,18 +216,23 @@ class I2CIDFSlaveDevice : public PollingComponent {
   };
 
  protected:
-  i2c_config_t i2c_slave_config_{};
-  i2c_port_t i2c_slave_port_{};
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+  i2c_slave_dev_handle_t i2c_slave_dev_handle_{nullptr};
+#endif
+  i2c_port_t i2c_slave_port_{I2C_NUM_0};
+  gpio_num_t sda_pin_{GPIO_NUM_5};
+  gpio_num_t scl_pin_{GPIO_NUM_6};
   std::map<uint8_t, I2CAction_ *> actions_{};
   bool ready_{false};
-  size_t command_size_{CMD_BASE_SIZE};
-  size_t data_received_size_{CMD_BASE_SIZE};
+  bool pullup_{false};
+  size_t command_size_{0};
+  size_t data_received_size_{0};
   size_t data_sent_size_{1};
   size_t prefix_size_{0};
   size_t rx_buffer_size_{1};
   size_t tx_buffer_size_{1};
-  uint32_t command_prefix_{0};
-  uint8_t *prefix_{nullptr};
+  uint16_t address_{0};
+  uint8_t prefix_[4]{0};
   uint8_t *data_received_{nullptr};
   uint8_t *data_sent_{nullptr};
 };

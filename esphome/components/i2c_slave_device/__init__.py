@@ -16,6 +16,7 @@ from esphome.const import (
     CONF_BUTTON,
     CONF_ID,
     CONF_LIGHT,
+    CONF_PULLUP,
     CONF_SCL,
     CONF_SDA,
     CONF_SENSOR,
@@ -26,10 +27,7 @@ from esphome.const import (
 from esphome.core import CORE, coroutine_with_priority
 
 CONF_COVER = "cover"
-CONF_MAX_FREQUENCY = "max_frequency"
 CONF_TARGET_ID = "target_id"
-CONF_PULLUP_ENABLED_SCL = "pullup_scl"
-CONF_PULLUP_ENABLED_SDA = "pullup_sda"
 CONF_PREFIX = "prefix"
 CONF_RX_BUFFER_SIZE = "receive_buffer"
 CONF_SWITCH = "switch"
@@ -126,22 +124,16 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(): _framework_declare_type,
             cv.Optional(CONF_SDA, default="SDA"): pin_with_input_and_output_support,
             cv.Optional(CONF_SCL, default="SDL"): pin_with_input_and_output_support,
-            cv.SplitDefault(CONF_PULLUP_ENABLED_SDA, esp32_idf=True): cv.All(
+            cv.SplitDefault(CONF_PULLUP, esp32_idf=True): cv.All(
                 cv.only_with_esp_idf, cv.boolean
-            ),
-            cv.SplitDefault(CONF_PULLUP_ENABLED_SCL, esp32_idf=True): cv.All(
-                cv.only_with_esp_idf, cv.boolean
-            ),
-            cv.Optional(CONF_MAX_FREQUENCY, default="50khz"): cv.All(
-                cv.frequency, cv.Range(min=0, min_included=False, max=4294967295)
             ),
             cv.Optional(CONF_ADDRESS, default=0x08): cv.hex_uint8_t,
             cv.Optional(CONF_PREFIX, default=0xFF): cv.hex_uint32_t,
-            cv.Optional(CONF_RX_BUFFER_SIZE, default=8): cv.All(
-                cv.uint8_t, cv.Range(min=1, max=255)
+            cv.Optional(CONF_RX_BUFFER_SIZE, default=100): cv.All(
+                cv.uint16_t, cv.Range(min=1)
             ),
-            cv.Optional(CONF_TX_BUFFER_SIZE, default=8): cv.All(
-                cv.uint8_t, cv.Range(min=1, max=255)
+            cv.Optional(CONF_TX_BUFFER_SIZE, default=100): cv.All(
+                cv.uint16_t, cv.Range(min=1)
             ),
             cv.Optional(CONF_BINARY_SENSOR): cv.ensure_list(
                 CONFIG_I2C_SLAVE_BINARY_SENSOR_SCHEMA
@@ -171,11 +163,9 @@ async def to_code(config):
 
     cg.add(var.set_sda_pin(config[CONF_SDA]))
     cg.add(var.set_scl_pin(config[CONF_SCL]))
-    cg.add(var.set_pullup_enabled_sda(config[CONF_PULLUP_ENABLED_SDA]))
-    cg.add(var.set_pullup_enabled_scl(config[CONF_PULLUP_ENABLED_SCL]))
-    cg.add(var.set_max_frequency(config[CONF_MAX_FREQUENCY]))
+    cg.add(var.set_pullup(config[CONF_PULLUP]))
     cg.add(var.set_address(config[CONF_ADDRESS]))
-    cg.add(var.set_command_prefix(config[CONF_PREFIX]))
+    cg.add(var.set_prefix(config[CONF_PREFIX]))
     cg.add(var.set_rx_buffer_size(config[CONF_RX_BUFFER_SIZE]))
     cg.add(var.set_tx_buffer_size(config[CONF_TX_BUFFER_SIZE]))
 
