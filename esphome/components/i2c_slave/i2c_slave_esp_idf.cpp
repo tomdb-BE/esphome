@@ -129,7 +129,7 @@ void IDFI2CSlave::setup() {
   err = i2c_param_config(this->i2c_slave_port_, &i2c_slave_config);
   // Install the I2C slave driver v1
   if (err == ESP_OK)
-    err = i2c_driver_install(this->i2c_slave_port_, I2C_MODE_SLAVE, this->rx_buffer_size_, this->tx_buffer_size, 0);
+    err = i2c_driver_install(this->i2c_slave_port_, I2C_MODE_SLAVE, this->rx_buffer_size_, this->tx_buffer_size_, 0);
 
 #endif  // CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 
