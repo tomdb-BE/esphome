@@ -26,14 +26,14 @@ CONFIG_SCHEMA = cv.All(
                 cv.only_with_esp_idf, cv.boolean
             ),
             cv.Optional(CONF_ADDRESS, default=0x08): cv.hex_uint8_t,
-            cv.Optional(CONF_RX_BUFFER_SIZE, default=101): cv.All(
+            cv.Optional(CONF_RX_BUFFER_SIZE, default=256): cv.All(
                 cv.uint16_t, cv.Range(min=101)
             ),
-            cv.Optional(CONF_TX_BUFFER_SIZE, default=101): cv.All(
+            cv.Optional(CONF_TX_BUFFER_SIZE, default=256): cv.All(
                 cv.uint16_t, cv.Range(min=101)
             ),
         }
-    ).extend(cv.polling_component_schema("10s")),
+    ),
 )
 
 

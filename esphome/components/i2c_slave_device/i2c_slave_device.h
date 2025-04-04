@@ -16,7 +16,7 @@
 namespace esphome {
 namespace i2c_slave_device {
 
-class I2CSlaveDevice : public PollingComponent {
+class I2CSlaveDevice : public Component {
  public:
   ~I2CSlaveDevice();
   void set_sda_pin(uint8_t sda_pin) { this->sda_pin_ = static_cast<gpio_num_t>(sda_pin); }
@@ -26,11 +26,17 @@ class I2CSlaveDevice : public PollingComponent {
   void set_rx_buffer_size(uint16_t rx_buffer_size) { this->rx_buffer_size_ = (size_t) rx_buffer_size; }
   void set_tx_buffer_size(uint16_t tx_buffer_size) { this->tx_buffer_size_ = (size_t) tx_buffer_size; }
 
-  float get_setup_priority() const override { return setup_priority::DATA; }
+  float get_setup_priority() const override { return setup_priority::BUS; }
   void setup() override;
-  void setup_man();
   void dump_config() override;
-  void update() override;
+#if defined(USE_ARddDUINO)
+  void loop() override {
+    if (this->initialized_ && this->wire_->available()) {
+      for (int i = 0; i < this->rx_buffer_size_ && this->wire_->available(); i++)
+        this->rx_buffer_[i] = this->wire_->read();
+    }
+  }
+#endif
 
   int read_data(size_t size = 0);
   void get_data(uint8_t *data, size_t size = 0);
@@ -40,11 +46,12 @@ class I2CSlaveDevice : public PollingComponent {
   int write_data(std::string data);
 
 #if defined(USE_ARDUINO)
-  static void i2c_slave_tx_callback(void *arg);
-  static void i2c_slave_rx_callback(int size, void *arg);
+  static void i2c_slave_tx_callback();
+  static void i2c_slave_rx_callback(int size);
   // A very hacky way to override the private pointers to the Wire callback functions.
   // This allows for multiple I2CSlaveDevice instances as we can pass a pointer of the instance
   // to the callback function. (similar to esp-idf v2 driver method)
+  /*
   class TwoWireExtended : public TwoWire {
    public:
     TwoWireExtended(uint8_t bus_num) : TwoWire(bus_num) {
@@ -62,6 +69,7 @@ class I2CSlaveDevice : public PollingComponent {
     static void (*_onRequestCallbackExt)(void *);
     static void (*_onReceiveCallbackExt)(int, void *);
   };
+*/
 #elif CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
   static bool i2c_slave_tx_callback(i2c_slave_dev_handle_t i2c_slave, const i2c_slave_request_event_data_t *evt_data,
                                     void *arg);
@@ -75,12 +83,13 @@ class I2CSlaveDevice : public PollingComponent {
   gpio_num_t scl_pin_{GPIO_NUM_6};
   uint16_t address_{0};
   bool pullup_{false};
-  size_t rx_buffer_size_{101};
-  size_t tx_buffer_size_{101};
+  size_t rx_buffer_size_{256};
+  size_t tx_buffer_size_{256};
   uint8_t *rx_buffer_{nullptr};
   uint8_t *tx_buffer_{nullptr};
 #if defined(USE_ARDUINO)
-  TwoWireExtended *wire_{nullptr};
+  static I2CSlaveDevice *slave_dev_;
+  TwoWire *wire_{nullptr};
 #else
   i2c_port_t i2c_slave_port_{I2C_NUM_0};
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2

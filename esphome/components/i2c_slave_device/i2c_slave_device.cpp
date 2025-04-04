@@ -34,23 +34,20 @@ static std::string get_hex_string(const uint8_t *byte_array, const size_t size) 
 
 #if defined(USE_ARDUINO)
 
-void I2CSlaveDevice::i2c_slave_tx_callback(void *arg) {
-  /*
-  I2CSlaveDevice *slave_dev = (I2CSlaveDevice *) arg;
-  if (slave_dev) {
-    size_t max_size = (size < slave_dev->tx_buffer_size_) ? size : slave_dev->tx_buffer_size_;
-    for (int i = 0; i < max_size && Wire.available(); i++)
-      slave_dev->tx_buffer_[i] = Wire.read();
+I2CSlaveDevice *I2CSlaveDevice::slave_dev_ = nullptr;
+
+void I2CSlaveDevice::i2c_slave_tx_callback() {
+  const uint8_t data_zero = 0x00;
+  if (slave_dev_) {
+    slave_dev_->wire_->slaveWrite(&data_zero, 1);
   }
-      */
 }
 
-void I2CSlaveDevice::i2c_slave_rx_callback(int size, void *arg) {
-  I2CSlaveDevice *slave_dev = (I2CSlaveDevice *) arg;
-  if (slave_dev) {
-    size_t max_size = (size < slave_dev->rx_buffer_size_) ? size : slave_dev->rx_buffer_size_;
-    for (int i = 0; i < max_size; i++)
-      Wire.write(slave_dev->rx_buffer_[i]);
+void I2CSlaveDevice::i2c_slave_rx_callback(int size) {
+  if (slave_dev_) {
+    size_t max_size = (size < slave_dev_->rx_buffer_size_) ? size : slave_dev_->rx_buffer_size_;
+    for (int i = 0; i < max_size && slave_dev_->wire_->available(); i++)
+      slave_dev_->rx_buffer_[i] = slave_dev_->wire_->read();
   }
 }
 
@@ -81,31 +78,24 @@ bool I2CSlaveDevice::i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave,
 
 // SETUP
 
-void I2CSlaveDevice::setup() {}
-void I2CSlaveDevice::setup_man() {
+void I2CSlaveDevice::setup() {
   int err = 0;
 
 #if defined(USE_ARDUINO)  // Arduino Framework
+
+  // Set the static pointer to this instance so the callback functions can reference it
+  this->slave_dev_ = this;
 
 // Find free port and initiate I2C
 #if defined(USE_ESP32)
   ESP_LOGI(TAG, "Setting up I2C Slave using Arduino-ESP32...");
   static uint8_t next_bus_num = 0;
-  if (next_bus_num >= I2C_NUM_MAX) {
-    ESP_LOGE(TAG, "Too many I2C buses configured. Max %u supported.", I2C_NUM_MAX);
-    mark_failed();
-    return;
-  }
-  if (next_bus_num == 0 && &Wire != nullptr)
-    delete &Wire;
-
-  this->wire_ = new TwoWireExtended(next_bus_num, this);
+  if (next_bus_num < I2C_NUM_MAX)
+    this->wire_ = (next_bus_num == 0) ? &Wire : new TwoWire(next_bus_num);
   next_bus_num++;
-
 #elif defined(USE_ESP8266)
   ESP_LOGI(TAG, "Setting up I2C Slave using Arduino-ESP8266...");
   this->wire_ = new TwoWire();
-
 #elif defined(USE_RP2040)
   ESP_LOGI(TAG, "Setting up I2C Slave using Arduino-RP2040...");
   static bool first = true;
@@ -113,20 +103,29 @@ void I2CSlaveDevice::setup_man() {
   first = false;
 #endif
 
+  if (!this->wire_) {
+    ESP_LOGE(TAG, "Failed to create I2C device. Max %u supported.", I2C_NUM_MAX);
+    mark_failed();
+    return;
+  }
+
   // Set callback functions
   this->wire_->onRequest(i2c_slave_tx_callback);
   this->wire_->onReceive(i2c_slave_rx_callback);
 
-// Start the driver
-#if defined(USE_RP2040)
-  this->wire_->setSDA(this->sda_pin_);
-  this->wire_->setSCL(this->scl_pin_);
-  err = this->wire_->begin(this->address_);
-#else
+  // Start the driver
+#if defined(USE_ESP32)
   size_t buffer_size = (this->rx_buffer_size_ > this->tx_buffer_size_) ? this->rx_buffer_size_ : this->tx_buffer_size_;
   this->wire_->setBufferSize(buffer_size);
-  err = this->wire_->begin(this->address_, static_cast<int>(this->sda_pin_), static_cast<int>(this->scl_pin_));
-#endif  // USE_RP2040
+  this->wire_->setPins(static_cast<int>(this->sda_pin_), static_cast<int>(this->scl_pin_));
+  err = !this->wire_->begin(this->address_);
+#elif defined(USE_ESP8266)
+  err = !this->wire_->begin(this->address_, static_cast<int>(this->sda_pin_), static_cast<int>(this->scl_pin_));
+#elif defined(USE_RP2040)
+  this->wire_->setSDA(this->sda_pin_);
+  this->wire_->setSCL(this->scl_pin_);
+  err = !this->wire_->begin(this->address_);
+#endif
 
 #else  //  ESP-IDF Framework
 
@@ -149,7 +148,7 @@ void I2CSlaveDevice::setup_man() {
   ESP_LOGI(TAG, "Setting up I2C Slave using ESP-IDF - driver v2...");
 
   // Set the update interval to 'never' as updates will rely on interrupt callback when using v2 driver
-  this->set_update_interval(SCHEDULER_DONT_RUN);
+  // this->set_update_interval(SCHEDULER_DONT_RUN);
 
   // Set the I2C slave driver v2 config
   i2c_slave_config_t i2c_slave_config{};
@@ -220,6 +219,7 @@ void I2CSlaveDevice::setup_man() {
 
 // UPDATE - COMMAND PROCESSING
 
+/*
 void I2CSlaveDevice::update() {
   // Read the rx buffers of the i2c device for new commands from master
   int rx_data_size = read_data();
@@ -232,7 +232,7 @@ void I2CSlaveDevice::update() {
   for (int i = 0; i <= rx_data_size; i++) {
   }
 }
-
+*/
 // I2C OPERATIONS
 
 // Reads data sent by the master from the i2c rx buffer into the rx_buffer_ buffer and return the size
