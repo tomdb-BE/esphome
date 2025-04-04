@@ -18,7 +18,19 @@ namespace i2c_slave_device {
 
 class I2CSlaveDevice : public Component {
  public:
-  ~I2CSlaveDevice();
+  // Public interfaces:
+
+  // Reads <size> bytes from the i2c rx buffer into a byte array. When size = 0, all bytes are copied.
+  size_t read(uint8_t *rx_byte_array, size_t size = 0);
+  // Reads <size> chars from the i2c rx buffer into a string. When size = 0, all chars are copied.
+  std::string read(size_t size = 0);
+
+  // Writes <size> bytes from a byte array in the I2C's tx buffer. When size = 0, all bytes are written.
+  size_t write(const uint8_t *tx_byte_array, size_t size = 0);
+  // Writes <size> chars from a string in the I2C's tx buffer. When size = 0, all chars are written.
+  size_t write(const std::string tx_string, size_t size = 0);
+  // Note: it is up to the master to request the data from the tx buffers!
+
   void set_sda_pin(uint8_t sda_pin) { this->sda_pin_ = static_cast<gpio_num_t>(sda_pin); }
   void set_scl_pin(uint8_t scl_pin) { this->scl_pin_ = static_cast<gpio_num_t>(scl_pin); }
   void set_pullup(bool pullup) { this->pullup_ = pullup; }
@@ -29,55 +41,32 @@ class I2CSlaveDevice : public Component {
   float get_setup_priority() const override { return setup_priority::BUS; }
   void setup() override;
   void dump_config() override;
-#if defined(USE_ARddDUINO)
-  void loop() override {
-    if (this->initialized_ && this->wire_->available()) {
-      for (int i = 0; i < this->rx_buffer_size_ && this->wire_->available(); i++)
-        this->rx_buffer_[i] = this->wire_->read();
-    }
-  }
-#endif
-
-  int read_data(size_t size = 0);
-  void get_data(uint8_t *data, size_t size = 0);
-  std::string get_data(size_t size = 0);
-
-  int write_data(size_t size);
-  int write_data(std::string data);
+  ~I2CSlaveDevice();
 
 #if defined(USE_ARDUINO)
-  static void i2c_slave_tx_callback();
-  static void i2c_slave_rx_callback(int size);
-  // A very hacky way to override the private pointers to the Wire callback functions.
-  // This allows for multiple I2CSlaveDevice instances as we can pass a pointer of the instance
-  // to the callback function. (similar to esp-idf v2 driver method)
-  /*
-  class TwoWireExtended : public TwoWire {
-   public:
-    TwoWireExtended(uint8_t bus_num) : TwoWire(bus_num) {
-      this->onRequest(this->_onRequestCallBackDummy);
-      this->onReceive(this->_onReceiveCallBackDummy);
-    }
+  // (Dummy) static callback functions are required for Wire to operate in slave mode. Handling is done in the loop.
+  // This avoids the need for a static definition of this class to allow multiple instances.
+  static void i2c_slave_tx_callback(){};
+  static void i2c_slave_rx_callback(int size){};
+#endif
 
-    void onRequestExt(void (*function)(I2CSlaveDevice *)) { this->_onRequestCallbackExt = function; }
-    void onReceiveExt(void (*function)(int, I2CSlaveDevice *)) { this->_onReceiveCallbackExt = function; }
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2  // ESP-IDF >= v5.4.x
+  // I2C Slave v2 driver (ESP-IDF >= v5.4.x) allows providing a pointer to the instance in the callback function.
+  // This allows for callbacks to multiple instances and avoids checking for new master requests in the loop.
+  static bool i2c_slave_tx_callback(i2c_slave_dev_handle_t i2c_slave_handle,
+                                    const i2c_slave_request_event_data_t *evt_data, void *arg);
+  static bool i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave_handle,
+                                    const i2c_slave_rx_done_event_data_t *evt_data, void *arg);
+#else  // Arduino and ESP-IDF < v5.4.x
+  // I2C Slave driver v1 on ESP-IDF and the Wire driver on Arduino don't allow per instance callbacks.
+  // Therefore, checking for new receives/requests from master will be done in the loop.
+  void loop() override { this->get_rx_buffer_(); }
 
-   protected:
-    I2CSlaveDevice *i2c_slave_dev_{nullptr};
-    static void _onRequestCallBackDummy() { _onRequestCallbackExt(); }
-    static void _onReceiveCallBackDummy(int size) { _onReceiveCallbackExt(); }
-    static void (*_onRequestCallbackExt)(void *);
-    static void (*_onReceiveCallbackExt)(int, void *);
-  };
-*/
-#elif CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-  static bool i2c_slave_tx_callback(i2c_slave_dev_handle_t i2c_slave, const i2c_slave_request_event_data_t *evt_data,
-                                    void *arg);
-  static bool i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave, const i2c_slave_rx_done_event_data_t *evt_data,
-                                    void *arg);
 #endif
 
  protected:
+  void get_rx_buffer_();
+  void set_tx_buffer_(size_t size);
   bool initialized_{false};
   gpio_num_t sda_pin_{GPIO_NUM_5};
   gpio_num_t scl_pin_{GPIO_NUM_6};
@@ -85,17 +74,19 @@ class I2CSlaveDevice : public Component {
   bool pullup_{false};
   size_t rx_buffer_size_{256};
   size_t tx_buffer_size_{256};
+  size_t new_tx_size_{0};
+  int32_t last_tx_size_{0};
+  int32_t last_rx_size_{0};
   uint8_t *rx_buffer_{nullptr};
   uint8_t *tx_buffer_{nullptr};
 #if defined(USE_ARDUINO)
-  static I2CSlaveDevice *slave_dev_;
   TwoWire *wire_{nullptr};
 #else
   i2c_port_t i2c_slave_port_{I2C_NUM_0};
+#endif
 #if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
   i2c_slave_dev_handle_t i2c_slave_dev_handle_{nullptr};
-#endif  // CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-#endif  // USE_ARDUINO
+#endif
 };
 
 }  // namespace i2c_slave_device

@@ -19,62 +19,51 @@ static void initialize_byte_buffer(uint8_t *&byte_array, size_t size) {
   return;
 }
 
-// Converts a byte_array to a string of hex values
-static std::string get_hex_string(const uint8_t *byte_array, const size_t size) {
-  std::string hex_string = "";
-  for (size_t i = 0; i < size; i++) {
-    char byte_temp_string[5]{0};
-    sprintf(byte_temp_string, "0x%02x ", byte_array[i]);
-    hex_string = hex_string + byte_temp_string;
-  }
-  return hex_string;
-}
-
 // CALL BACKS
 
-#if defined(USE_ARDUINO)
+// ESP-IDF I2C Slave Driver v2 Callbacks
+#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
 
-I2CSlaveDevice *I2CSlaveDevice::slave_dev_ = nullptr;
-
-void I2CSlaveDevice::i2c_slave_tx_callback() {
-  const uint8_t data_zero = 0x00;
-  if (slave_dev_) {
-    slave_dev_->wire_->slaveWrite(&data_zero, 1);
-  }
-}
-
-void I2CSlaveDevice::i2c_slave_rx_callback(int size) {
-  if (slave_dev_) {
-    size_t max_size = (size < slave_dev_->rx_buffer_size_) ? size : slave_dev_->rx_buffer_size_;
-    for (int i = 0; i < max_size && slave_dev_->wire_->available(); i++)
-      slave_dev_->rx_buffer_[i] = slave_dev_->wire_->read();
-  }
-}
-
-#elif CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-
-bool I2CSlaveDevice::i2c_slave_tx_callback(i2c_slave_dev_handle_t i2c_slave,
+// On request callback function. The tx_buffer of the individual instance is accessible via the pointer in arg.
+bool I2CSlaveDevice::i2c_slave_tx_callback(i2c_slave_dev_handle_t i2c_slave_handle,
                                            const i2c_slave_request_event_data_t *evt_data, void *arg) {
-  uint32_t write_len;
-  const uint8_t data_zero = 0x00;
+  uint32_t write_len = 0;
+  I2CSlaveDevice *slave_dev = (I2CSlaveDevice *) arg;
 
-  esp_err_t err = i2c_slave_write(i2c_slave, &data_zero, 1, &write_len, 0);
+  if (slave_dev && slave_dev->new_tx_size_ > 0) {
+    uint32_t size =
+        (slave_dev->new_tx_size_ < slave_dev->rx_buffer_size_) ? slave_dev->new_tx_size_ : slave_dev->rx_buffer_size_;
+    esp_err_t err = i2c_slave_write(i2c_slave_handle, slave_dev->tx_buffer_, size, &write_len, 0);
+    if (err == ESP_OK) {
+      slave_dev->new_tx_size_ = 0;
+      slave_dev->last_tx_size_ = (int32_t) write_len;
+    } else {
+      slave_dev->last_tx_size_ = -1;
+    }
+  } else {
+    char buf_zero[] = {0x00};
+    esp_err_t err = i2c_slave_write(i2c_slave_handle, &buf_zero, 1, &write_len, 0);
+  }
 
   return 0;
 }
 
-bool I2CSlaveDevice::i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave,
+// On receive callback function. The rx_buffer of the individual instance is accessible via the pointer in arg.
+bool I2CSlaveDevice::i2c_slave_rx_callback(i2c_slave_dev_handle_t i2c_slave_handle,
                                            const i2c_slave_rx_done_event_data_t *evt_data, void *arg) {
   I2CSlaveDevice *slave_dev = (I2CSlaveDevice *) arg;
+
   if (slave_dev && evt_data) {
-    size_t max_size = (evt_data->length < slave_dev->rx_buffer_size_) ? evt_data->length : slave_dev->rx_buffer_size_;
-    for (int i = 0; i < max_size; i++)
+    size_t size = (evt_data->length < slave_dev->rx_buffer_size_) ? evt_data->length : slave_dev->rx_buffer_size_;
+    for (int i = 0; i < size; i++)
       slave_dev->rx_buffer_[i] = evt_data->buffer[i];
+    slave_dev->last_rx_size_ = size;
   }
+
   return 0;
 }
 
-#endif
+#endif  // ESP-IDF I2C Slave Driver v2 Callbacks
 
 // SETUP
 
@@ -82,9 +71,6 @@ void I2CSlaveDevice::setup() {
   int err = 0;
 
 #if defined(USE_ARDUINO)  // Arduino Framework
-
-  // Set the static pointer to this instance so the callback functions can reference it
-  this->slave_dev_ = this;
 
 // Find free port and initiate I2C
 #if defined(USE_ESP32)
@@ -105,7 +91,7 @@ void I2CSlaveDevice::setup() {
 
   if (!this->wire_) {
     ESP_LOGE(TAG, "Failed to create I2C device. Max %u supported.", I2C_NUM_MAX);
-    mark_failed();
+    this->mark_failed();
     return;
   }
 
@@ -139,7 +125,7 @@ void I2CSlaveDevice::setup() {
 #endif
   if (this->i2c_slave_port_ == I2C_NUM_MAX) {
     ESP_LOGE(TAG, "Too many I2C buses configured. Max %u supported.", I2C_NUM_MAX);
-    mark_failed();
+    this->mark_failed();
     return;
   }
 
@@ -206,14 +192,14 @@ void I2CSlaveDevice::setup() {
   if (err != 0) {
     // Fail the component if the I2C slave drive installation returned errors
     ESP_LOGE(TAG, "Failed to install I2C slave driver. Error: %d", err);
-    mark_failed();
+    this->mark_failed();
   } else {
     // Allocate local read and write buffers
     initialize_byte_buffer(this->rx_buffer_, this->rx_buffer_size_);
     initialize_byte_buffer(this->tx_buffer_, this->tx_buffer_size_);
 
     ESP_LOGI(TAG, "I2C Slave ready to receive on address 0x%02x", this->address_);
-    initialized_ = true;
+    this->initialized_ = true;
   }
 }
 
@@ -235,75 +221,119 @@ void I2CSlaveDevice::update() {
 */
 // I2C OPERATIONS
 
-// Reads data sent by the master from the i2c rx buffer into the rx_buffer_ buffer and return the size
-int I2CSlaveDevice::read_data(size_t size) {
-  if (!initialized_)
-    return -2;
-  if (!size || size > this->rx_buffer_size_)
-    size = this->rx_buffer_size_;
-#if defined(USE_ARDUINO) || CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-  return size;
-#else
-  return i2c_slave_read_buffer(this->i2c_slave_port_, this->rx_buffer_, size, 0);
-#endif
-}
-
-// Reads data sent by the master from the i2c rx buffer into a byte-array
-void I2CSlaveDevice::get_data(uint8_t *data, size_t size) {
-  if (!data)
-    return;
-  int rx_data_size = this->read_data(size);
-  for (int i = 0; i < rx_data_size && i < sizeof(data); i++)
-    data[i] = this->rx_buffer_[i];
-}
-
-// Reads data sent by the master from the i2c rx buffer into a string
-std::string I2CSlaveDevice::get_data(size_t size) {
-  int rx_data_size = this->read_data(size);
-
-  if (rx_data_size == -2)
-    return "NOT READY";
-
-  if (rx_data_size < 0)
-    return "ERROR";
-
-  std::string received_data = "";
-  for (int i = 0; i < rx_data_size; i++)
-    received_data += this->rx_buffer_[i];
-
-  return received_data;
-}
-
-// Writes byte-array to the i2c tx buffer to be read by master
-int I2CSlaveDevice::write_data(size_t size) {
-  if (!initialized_)
-    return -2;
-  if (!size)
-    size = this->tx_buffer_size_;
-#ifdef USE_ARDUINO
-  return size;
-#elif CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-  uint32_t write_len = 0;
-  esp_err_t err = i2c_slave_write(this->i2c_slave_dev_handle_, this->tx_buffer_, size, &write_len, 0);
-  if (err)
-    return -1;
-  return (int) write_len;
-#else
-  return i2c_slave_write_buffer(this->i2c_slave_port_, this->tx_buffer_, size, 0);
-#endif
-}
-
-// Writes string to the i2c tx buffer to be read by master
-int I2CSlaveDevice::write_data(std::string data) {
-  size_t size = (data.length() < this->tx_buffer_size_) ? data.length() : this->tx_buffer_size_;
+size_t I2CSlaveDevice::read(uint8_t *rx_byte_array, size_t size) {
+  // Return when pointer to target byte array is invalid or if no data has been received
+  if (!rx_byte_array || this->last_rx_size_ < 1)
+    return 0;
+  // Set the requested size to the size of the data received when the provided size is not set or larger.
+  if (!size || size > this->last_rx_size_)
+    size = this->last_rx_size_;
+  // Do not exceed the available size in the target byte array.
+  if (size > sizeof(rx_byte_array))
+    size = sizeof(rx_byte_array);
+  // Copy <size> bytes from the rx_buffer to the target byte array.
   for (int i = 0; i < size; i++)
-    this->tx_buffer_[i] = data[i];
-  return this->write_data(size);
+    rx_byte_array[i] = this->rx_buffer_[i];
+  // Return the actual size read
+  return size;
+}
+
+std::string I2CSlaveDevice::read(size_t size) {
+  if (this->last_rx_size_ < 1)
+    return "";
+  // If no size is provided of if the size exceeds the size of data read, read all available data.
+  if (!size || size > this->last_rx_size_)
+    size = this->last_rx_size_;
+
+  std::string str_rx;
+  // Copy <size> characters from the rx buffer to the string
+  for (int i = 0; i < size; i++)
+    str_rx += this->rx_buffer_[i];
+  // Return the string
+  return str_rx;
+}
+
+size_t I2CSlaveDevice::write(const uint8_t *tx_byte_array, size_t size) {
+  // Return when I2C slave device not ready
+  if (!initialized_)
+    return 0;
+  // If no size is provided, write the whole string
+  if (!size)
+    size = sizeof(tx_byte_array);
+  // Limit the chars written to the tx_buffer size
+  if (size > this->tx_buffer_size_)
+    size = this->tx_buffer_size_;
+  // Write <size> characters to the tx buffer. The master can now request this data.
+  for (int i = 0; i < size; i++)
+    this->tx_buffer_[i] = tx_byte_array[i];
+  this->new_tx_size_ = size;
+#if !CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+  this->set_tx_buffer_(size);
+#endif
+  // Return the amount of characters written
+  return size;
+}
+
+size_t I2CSlaveDevice::write(const std::string tx_string, size_t size) {
+  // Return when I2C slave device not ready
+  if (!initialized_)
+    return 0;
+  // If no size is provided, write the whole string
+  if (!size)
+    size = tx_string.length();
+  // Limit the chars written to the tx_buffer size
+  if (size > this->tx_buffer_size_)
+    size = this->tx_buffer_size_;
+  // Write <size> characters to the tx buffer. The master can now request this data.
+  for (int i = 0; i < size; i++)
+    this->tx_buffer_[i] = tx_string[i];
+    // Set the I2C's internal tx buffer and return the size of data written.
+#if !CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+  this->set_tx_buffer_(size);
+#endif
+  return size;
+}
+
+// Copies the recieved data from master from the I2C's rx buffer
+void I2CSlaveDevice::get_rx_buffer_() {
+  int rx_size = 0;
+  // Return when I2C slave device not ready
+  if (!initialized_)
+    return;
+
+#if defined(USE_ARDUINO)
+  // Return if no new data received from master
+  if (!wire_->available())
+    return;
+
+  // Copies the I2C's internal rx buffer
+  for (int i = 0; this->wire_->available() && i < this->rx_buffer_size_; i++) {
+    this->rx_buffer_[i] = this->wire_->read();
+    rx_size++;
+  }
+#else
+  // ESP-IDF driver v1: Copies the I2C's internal rx buffer
+  // ESP-IDF driver v2: this function is not called and and rx buffer is updated via callback on_receive
+  rx_size = i2c_slave_read_buffer(this->i2c_slave_port_, this->rx_buffer_, this->rx_buffer_size_, 0);
+#endif
+
+  if (rx_size > 0)
+    this->last_rx_size_ = rx_size;
+}
+
+// Copies the tx buffer to the I2C's internal tx buffer so the master can read it upon request
+void I2CSlaveDevice::set_tx_buffer_(size_t size) {
+#ifdef USE_ARDUINO
+  this->wire_->slaveWrite(this->tx_buffer_, size);
+  this->last_tx_size_ = size;
+#else
+  // ESP-IDF I2C driver v2 handles this in the request callback
+  this->last_tx_size_ = i2c_slave_write_buffer(this->i2c_slave_port_, this->tx_buffer_, size, 0);
+#endif
 }
 
 // Dump config to config log
 void I2CSlaveDevice::dump_config() {
-  const char *const driver_names[] = {"ARDUINO", "ESP-IDFv1", "ESP-IDFv2"};
   ESP_LOGCONFIG(TAG, "I2C Slave Device :");
   ESP_LOGCONFIG(TAG, "  SDA Pin: GPIO%d", this->sda_pin_);
   ESP_LOGCONFIG(TAG, "  SCL Pin: GPIO%d", this->scl_pin_);
@@ -322,14 +352,15 @@ void I2CSlaveDevice::dump_config() {
 
 // Destructor: clean up dynamically allocated buffers
 I2CSlaveDevice::~I2CSlaveDevice() {
-#ifndef USE_ARDUINO
   if (initialized_)
-#if CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
+#if defined(USE_ARDUINO)
+    if (this->wire_)
+      delete this->wire_;
+#elif CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
     esp_err_t err = i2c_del_slave_device(this->i2c_slave_dev_handle_);
 #else
     esp_err_t err = i2c_driver_delete(this->i2c_slave_port_);
-#endif  // CONFIG_I2C_ENABLE_SLAVE_DRIVER_VERSION_2
-#endif  // USE ARDUINO
+#endif
   if (this->rx_buffer_)
     delete[] this->rx_buffer_;
   if (this->tx_buffer_)
