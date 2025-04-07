@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esphome/core/hal.h"
 #include "esphome/core/component.h"
 
 #if defined(USE_ARDUINO)
@@ -21,22 +22,27 @@ class I2CSlaveDevice : public Component {
   // Public interfaces:
 
   // Reads <size> bytes from the i2c rx buffer into a byte array. When size = 0, all bytes are copied.
-  size_t read(uint8_t *rx_byte_array, size_t size = 0);
+  uint32_t read(uint8_t *rx_byte_array, uint32_t size = 0);
   // Reads <size> chars from the i2c rx buffer into a string. When size = 0, all chars are copied.
-  std::string read(size_t size = 0);
+  std::string read(uint32_t size = 0);
 
   // Writes <size> bytes from a byte array in the I2C's tx buffer. When size = 0, all bytes are written.
-  size_t write(const uint8_t *tx_byte_array, size_t size = 0);
+  uint32_t write(const uint8_t *tx_byte_array, uint32_t size = 0);
   // Writes <size> chars from a string in the I2C's tx buffer. When size = 0, all chars are written.
-  size_t write(const std::string tx_string, size_t size = 0);
+  uint32_t write(const std::string tx_string, uint32_t size = 0);
   // Note: it is up to the master to request the data from the tx buffers!
+
+  // Returns the time in millis since last succesful receive
+  uint32_t get_last_receive_time() { return esphome::millis() - this->last_rx_time_; }
+  // Returns the time in millis since last succesful request
+  uint32_t get_last_request_time() { return esphome::millis() - this->last_tx_time_; }
 
   void set_sda_pin(uint8_t sda_pin) { this->sda_pin_ = static_cast<gpio_num_t>(sda_pin); }
   void set_scl_pin(uint8_t scl_pin) { this->scl_pin_ = static_cast<gpio_num_t>(scl_pin); }
   void set_pullup(bool pullup) { this->pullup_ = pullup; }
   void set_address(uint8_t address) { this->address_ = (uint16_t) address; }
-  void set_rx_buffer_size(uint16_t rx_buffer_size) { this->rx_buffer_size_ = (size_t) rx_buffer_size; }
-  void set_tx_buffer_size(uint16_t tx_buffer_size) { this->tx_buffer_size_ = (size_t) tx_buffer_size; }
+  void set_rx_buffer_size(uint32_t rx_buffer_size) { this->rx_buffer_size_ = rx_buffer_size; }
+  void set_tx_buffer_size(uint32_t tx_buffer_size) { this->tx_buffer_size_ = tx_buffer_size; }
 
   float get_setup_priority() const override { return setup_priority::BUS; }
   void setup() override;
@@ -66,17 +72,19 @@ class I2CSlaveDevice : public Component {
 
  protected:
   void get_rx_buffer_();
-  void set_tx_buffer_(size_t size);
+  void set_tx_buffer_(uint32_t size);
   bool initialized_{false};
   gpio_num_t sda_pin_{GPIO_NUM_5};
   gpio_num_t scl_pin_{GPIO_NUM_6};
   uint16_t address_{0};
-  bool pullup_{false};
-  size_t rx_buffer_size_{256};
-  size_t tx_buffer_size_{256};
-  size_t new_tx_size_{0};
-  int32_t last_tx_size_{0};
-  int32_t last_rx_size_{0};
+  bool pullup_{true};
+  uint32_t rx_buffer_size_{256};
+  uint32_t tx_buffer_size_{256};
+  uint32_t new_tx_size_{0};
+  uint32_t last_tx_size_{0};
+  uint32_t last_rx_size_{0};
+  uint32_t last_tx_time_{0};
+  uint32_t last_rx_time_{0};
   uint8_t *rx_buffer_{nullptr};
   uint8_t *tx_buffer_{nullptr};
 #if defined(USE_ARDUINO)
